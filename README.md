@@ -24,10 +24,13 @@ Requires CMake 3.25+, Ninja, and **Clang 20+**.
 **Linux (Ubuntu 24.04)**
 
 ```bash
-sudo apt install clang-20 lld-20 ninja-build cmake libgtk-3-dev \
-  libx11-xcb-dev libxss-dev libxrandr-dev libxcursor-dev libxi-dev \
-  libxinerama-dev libxkbcommon-dev libwayland-dev wayland-protocols \
-  libasound2-dev libpulse-dev libpipewire-0.3-dev libvulkan-dev
+sudo apt install clang-20 lld-20 ninja-build cmake pkg-config nasm \
+  libgtk-3-dev libx11-xcb-dev libxcb1-dev libxcb-xkb-dev libxcb-randr0-dev \
+  libxcb-keysyms1-dev libxcb-icccm4-dev libxcb-xfixes0-dev libxcb-shape0-dev \
+  libxss-dev libxrandr-dev libxcursor-dev libxi-dev libxinerama-dev libxtst-dev \
+  libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libdrm-dev \
+  libgbm-dev libudev-dev libdbus-1-dev libpipewire-0.3-dev libasound2-dev \
+  libpulse-dev libvulkan-dev
 git clone --recursive -b development https://github.com/rexglue/rexglue-sdk.git
 cd rexglue-sdk
 cmake --preset linux-amd64 -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20
