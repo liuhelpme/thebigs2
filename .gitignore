@@ -1,0 +1,15 @@
+# Game data — never commit copyrighted content
+game/
+*.xex
+*.xexp
+*.iso
+
+# Codegen output (keep the integration script)
+generated/*
+!generated/rexglue.cmake
+
+# Build
+out/
+build/
+CMakeUserPresets.json
+*.bak

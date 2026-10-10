@@ -1,0 +1,86 @@
+# The Bigs 2 — ReXGlue static recompilation
+
+Native Windows/Linux port of *The Bigs 2* (Xbox 360, 2K Sports, 2009) built by
+statically recompiling the original PowerPC executable to C++ with the
+[ReXGlue SDK](https://github.com/rexglue/rexglue-sdk) **`development`** branch.
+
+No game data is included. You need your own dump of the disc.
+
+## Layout
+
+| Path | What it is |
+|---|---|
+| `thebigs2_manifest.toml` | Codegen entry point (project, XEX path, includes) |
+| `config/codegen.toml` | Register/codegen flags and analysis tuning |
+| `config/overrides.toml` | Hand-written function bounds, jump tables, hooks, CRT map |
+| `src/thebigs2_app.h` | `ReXApp` subclass — runtime hooks go here |
+| `game/` | **Your** extracted disc contents (`default.xex` + data). Git-ignored. |
+| `generated/` | Codegen output — regenerated, never edit by hand |
+
+## 1. Build and install the SDK (once per machine)
+
+Requires CMake 3.25+, Ninja, and **Clang 20+**.
+
+**Linux (Ubuntu 24.04)**
+
+```bash
+sudo apt install clang-20 lld-20 ninja-build cmake libgtk-3-dev \
+  libx11-xcb-dev libxss-dev libxrandr-dev libxcursor-dev libxi-dev \
+  libxinerama-dev libxkbcommon-dev libwayland-dev wayland-protocols \
+  libasound2-dev libpulse-dev libpipewire-0.3-dev libvulkan-dev
+git clone --recursive -b development https://github.com/rexglue/rexglue-sdk.git
+cd rexglue-sdk
+cmake --preset linux-amd64 -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20
+cmake --build out/build/linux-amd64 --config Release --target install
+```
+
+**Windows** — Visual Studio 2022 with *Desktop development with C++*, *C++ Clang
+Compiler for Windows (20.x+)* and *MSBuild support for LLVM*. From a
+*Developer PowerShell for VS 2022*:
+
+```powershell
+git clone --recursive -b development https://github.com/rexglue/rexglue-sdk.git
+cd rexglue-sdk
+cmake --preset win-amd64
+cmake --build out/build/win-amd64 --config Release --target install
+```
+
+Install registers the SDK with CMake, so this project finds it automatically.
+To use a source checkout instead, configure with `-DREXSDK_DIR=/path/to/rexglue-sdk`.
+
+## 2. Put your game files in `game/`
+
+Extract your disc image so `game/default.xex` exists alongside the game's data
+folders. On Linux, `extract-xiso -x TheBigs2.iso -d game` or
+`xdvdfs unpack TheBigs2.iso game` both work. If you have a title update, put the
+`.xexp` in `game/` and uncomment `patch_file_path` in `config/codegen.toml`.
+
+## 3. Recompile and build
+
+```bash
+# Linux
+cmake --preset linux-amd64-release -DCMAKE_CXX_COMPILER=clang++-20
+cmake --build --preset linux-amd64-release
+
+# Windows
+cmake --preset win-amd64-release
+cmake --build --preset win-amd64-release
+```
+
+Codegen runs automatically as part of the build (target `thebigs2_codegen`) and
+re-runs only when the XEX or a config file changes. At launch the app looks for
+`game/default.xex` next to the executable, then in the working directory;
+pass `--game_data_root <dir>` to point it anywhere else.
+
+## 4. The iteration loop
+
+This is not push-button. Expect the first codegen run to report validation
+errors. The loop is:
+
+1. Run `rexglue codegen thebigs2_manifest.toml` and read the errors.
+2. Fix them in `config/overrides.toml` — function sizes/parents, `[[switch_tables]]`,
+   `[[invalid_instructions]]`. Use `--force` to emit output anyway and keep moving.
+3. Build, run, and watch the log for unimplemented kernel/XAM imports; stub or
+   implement them (see the SDK wiki: *Function Overrides*, *Kernel State & Objects*).
+4. Once it plays, turn on the `*_as_local` flags in `config/codegen.toml` one at
+   a time for performance, re-testing after each.

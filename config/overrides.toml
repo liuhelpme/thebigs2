@@ -1,0 +1,33 @@
+# The Bigs 2 — manual analysis fixes (included from thebigs2_manifest.toml)
+#
+# Add entries here as `rexglue codegen` reports unresolved calls, bad function
+# boundaries, or missed jump tables. Keep one comment per entry saying why.
+
+[functions]
+# 0x82000000 = { name = "GameMain" }
+# 0x82000100 = { size = 0x40 }
+# 0x82000300 = { parent = 0x82000000, size = 0x20 }   # discontinuous chunk
+
+# [[switch_tables]]
+# address  = 0x82000000            # the bctr
+# register = 11
+# labels   = [0x82000100, 0x82000200]
+
+# [[invalid_instructions]]
+# data = 0x00000000
+# size = 4
+
+# [[midasm_hook]]
+# address = 0x82000000
+# name = "SkipIntroMovies"
+# registers = ["r3"]
+# return_on_true = true
+
+# Native CRT replacements — the heap group is all-or-nothing (all four or none).
+# [rexcrt]
+# RtlAllocateHeap   = 0x00000000
+# RtlFreeHeap       = 0x00000000
+# RtlSizeHeap       = 0x00000000
+# RtlReAllocateHeap = 0x00000000
+# memcpy = 0x00000000
+# memset = 0x00000000
