@@ -21,7 +21,11 @@ class Thebigs2App : public rex::ReXApp {
 
   // Override virtual hooks for customization:
   // void OnPostInitLogging() override {}
-  // void OnPreSetup(rex::RuntimeConfig& config) override {}
+  // GPU emulation is opt-in; default to the Xenos plugin unless the user
+  // picked one with --gpu_plugin.
+  void OnPreSetup(rex::RuntimeConfig& config) override {
+    if (config.gpu_plugin.empty()) config.gpu_plugin = "xenos";
+  }
   // void OnLoadXexImage(std::string& xex_image) override {}
   // void OnPostLoadXexImage() override {}
   // void OnPostSetup() override {}

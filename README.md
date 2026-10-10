@@ -72,6 +72,18 @@ re-runs only when the XEX or a config file changes. At launch the app looks for
 `game/default.xex` next to the executable, then in the working directory;
 pass `--game_data_root <dir>` to point it anywhere else.
 
+### Status (SDK `development` @ bd833a2, Title ID 54540830, XEX v0.0.0.3)
+
+- Codegen: clean after the fixes in `config/overrides.toml` (9 tail-split leaf
+  functions, 4 thunks, 1 leaf behind a wrapper, 2 compressed jump tables).
+- Linux build: links, boots, brings up Vulkan via the Xenos GPU plugin, compiles
+  shaders and presents frames. With only `default.xex` present it then faults
+  on a null pointer right after failing to open its data files — expected
+  without the rest of the disc.
+- All 221 kernel/XAM imports exist in the SDK. Stubs to watch: `RtlUnwind`,
+  `__C_specific_handler` (38 functions carry SEH handlers), `XamShowMessageBoxUIEx`.
+- Windows: same sources and presets; not built yet.
+
 ## 4. The iteration loop
 
 This is not push-button. Expect the first codegen run to report validation

@@ -4,9 +4,52 @@
 # boundaries, or missed jump tables. Keep one comment per entry saying why.
 
 [functions]
+# --- Leaf functions with no .pdata whose cold-path tails sit after the blr and
+#     branch back into the body. Scanner split them / missed the entry.
+0x8228E4A8 = { end = 0x8228E5C0 }
+0x8228E5C0 = { end = 0x8228E6D8 }
+0x8228E6D8 = { end = 0x8228E72C }
+0x822910F0 = { end = 0x82291148 }
+0x82291148 = { end = 0x822911A0 }
+0x822911A0 = { end = 0x822911F8 }
+0x822911F8 = { end = 0x82291250 }
+0x82291550 = { end = 0x822915A8 }
+0x822915A8 = { end = 0x822915F4 }
+
+# --- this-adjustor thunks (addi r3,r3,±8 ; b target). 0x82519678 tail-calls
+#     the 0x82519670 thunk, so each one must be its own function.
+0x82519668 = { size = 8 }
+0x82519670 = { size = 8 }
+0x82519678 = { size = 8 }
+
+# --- lwz r3,68(r3) ; b 0x82548270 wrapper, and the leaf it tail-calls.
+0x82537198 = { size = 8 }
+0x82548270 = { end = 0x82548298 }
+
 # 0x82000000 = { name = "GameMain" }
 # 0x82000100 = { size = 0x40 }
 # 0x82000300 = { parent = 0x82000000, size = 0x20 }   # discontinuous chunk
+
+# sub_823131A0: two compressed (lbzx) jump tables back to back. Auto-detection
+# scaled the first table by 4, overran the function into sub_82313418 and
+# emitted gotos to labels that don't exist (clang: undeclared loc_82313470).
+# Table 1 @0x82037A40, 20 unscaled byte offsets from 0x82313200 (r11 = r3-28).
+[[switch_tables]]
+address  = 0x823131FC
+register = 11
+labels   = [0x82313200, 0x8231322C, 0x8231328C, 0x8231328C, 0x82313234,
+            0x8231328C, 0x8231328C, 0x8231328C, 0x8231325C, 0x8231328C,
+            0x8231328C, 0x8231323C, 0x82313244, 0x8231326C, 0x8231324C,
+            0x82313274, 0x82313254, 0x8231327C, 0x82313264, 0x82313284]
+
+# Table 2 @0x82037A30, byte*4 offsets from 0x8231322C; r11 = 0..12 (set by the
+# li r11,N / b 0x82313204 stubs), so 13 entries — the last 3 bytes are padding.
+[[switch_tables]]
+address  = 0x82313228
+register = 11
+labels   = [0x823132B0, 0x823132D0, 0x823132F0, 0x82313310, 0x823132B0,
+            0x823132D0, 0x82313310, 0x82313330, 0x823132F0, 0x823132B0,
+            0x823132D0, 0x82313310, 0x823132F0]
 
 # [[switch_tables]]
 # address  = 0x82000000            # the bctr
