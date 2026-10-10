@@ -16,6 +16,64 @@
 0x82291550 = { end = 0x822915A8 }
 0x822915A8 = { end = 0x822915F4 }
 
+# --- Leaf functions with no .pdata reached only through vtables / function
+#     pointers in data (found by scanning .rdata/.data for code pointers).
+#     0x82411C20 crashed at runtime: "Call to invalid or unregistered function".
+0x820E2958 = { end = 0x820E2970 }   # ptr @0x82003BD0
+0x820E2A90 = { end = 0x820E2AA8 }   # ptr @0x82003BB4
+0x820ED670 = { end = 0x820ED694 }   # ptr @0x820045C4
+0x82122D50 = { end = 0x82122D84 }   # ptr @0x820047C0
+0x82130920 = { end = 0x8213092C }   # ptr @0x8200C0F4
+0x82130A68 = { end = 0x82130A74 }   # ptr @0x8200C180
+0x82182058 = { end = 0x82182070 }   # ptr @0x82016F54
+0x82216B70 = { end = 0x82216B7C }   # ptr @0x820219C0
+0x8221BDF8 = { end = 0x8221BE38 }   # ptr @0x82022824
+0x8221C608 = { end = 0x8221C650 }   # ptr @0x82022B54
+0x82230AC8 = { end = 0x82230AD8 }   # ptr @0x82030838
+0x82278E78 = { end = 0x82278E90 }   # ptr @0x82030890
+0x823E5DF0 = { end = 0x823E5DF8 }   # ptr @0x82056C7C
+0x823E6058 = { end = 0x823E6064 }   # ptr @0x82056CC8
+0x823E6070 = { end = 0x823E6088 }   # ptr @0x82056CD0
+0x823EB668 = { end = 0x823EB690 }   # ptr @0x82056B60
+0x82411C20 = { end = 0x82411C3C }   # ptr @0x8205AAAC
+0x8249D490 = { end = 0x8249D4C0 }   # ptr @0x820655C8
+0x824A1C10 = { end = 0x824A1C28 }   # ptr @0x820652C4
+0x824A1C28 = { end = 0x824A1C40 }   # ptr @0x820652C0
+0x824A2270 = { end = 0x824A2290 }   # ptr @0x8202F214
+0x824A27A8 = { end = 0x824A27B0 }   # ptr @0x820652B4
+0x824A96C8 = { end = 0x824A96D0 }   # ptr @0x82065E50
+0x8251D828 = { end = 0x8251D830 }   # ptr @0x820781E4
+0x8251E890 = { end = 0x8251E8BC }   # ptr @0x820782EC
+0x82522DE8 = { end = 0x82522DF0 }   # ptr @0x82078434
+0x82522DF0 = { end = 0x82522DF8 }   # ptr @0x82078474
+0x82522E00 = { end = 0x82522E08 }   # ptr @0x8207844C
+0x82522E08 = { end = 0x82522E10 }   # ptr @0x82078430
+0x82527800 = { end = 0x82527808 }   # ptr @0x82078464
+0x82527808 = { end = 0x82527810 }   # ptr @0x82078440
+0x82527810 = { end = 0x82527818 }   # ptr @0x82078454
+0x82527818 = { end = 0x82527820 }   # ptr @0x8207871C
+0x82527A90 = { end = 0x82527A98 }   # ptr @0x8207843C
+0x82527A98 = { end = 0x82527AA0 }   # ptr @0x82078784
+0x82527AA8 = { end = 0x82527AB0 }   # ptr @0x82078470
+0x82527AB0 = { end = 0x82527AB8 }   # ptr @0x82078700
+0x82527AB8 = { end = 0x82527AC0 }   # ptr @0x82078468
+0x82527AC0 = { end = 0x82527AC8 }   # ptr @0x820786D8
+0x82527AC8 = { end = 0x82527AD0 }   # ptr @0x82078444
+0x82537590 = { end = 0x825375A8 }   # ptr @0x820795F4
+0x825382B8 = { end = 0x825382C0 }   # ptr @0x8207958C
+0x8254B8A0 = { end = 0x8254B8A8 }   # ptr @0x8207E838
+
+# --- Leaf functions with no .pdata whose address is built in code with
+#     lis/addi (callbacks passed as args, stored fn ptrs, getter return values).
+0x8210EC58 = { end = 0x8210EC6C }   # arg to bl 0x8240A610, built @0x82145788
+0x82250050 = { end = 0x82250068 }   # arg to bl 0x82251CC0, built @0x8225ABF0
+0x82250068 = { end = 0x82250078 }   # arg to bl 0x82251CC0, built @0x8225AC64
+0x82277640 = { end = 0x82277660 }   # stored fn ptr, built @0x8228DC58
+0x8228CC88 = { end = 0x8228CC98 }   # stored fn ptr, built @0x8228FA30
+0x82291250 = { end = 0x8229128C }   # stored fn ptr, built @0x8229F44C
+0x824F13A0 = { end = 0x824F13B0 }   # vec-decode stub, returned by getter @0x824F1F8C
+0x824F13B0 = { end = 0x824F1428 }   # vec-decode leaf, returned by getter @0x824F1F98
+
 # --- this-adjustor thunks (addi r3,r3,±8 ; b target). 0x82519678 tail-calls
 #     the 0x82519670 thunk, so each one must be its own function.
 0x82519668 = { size = 8 }

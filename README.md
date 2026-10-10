@@ -70,6 +70,11 @@ cmake --preset win-amd64-release
 cmake --build --preset win-amd64-release
 ```
 
+> **First build, or after deleting `generated/default`:** run the configure +
+> build pair **twice**. The build list of recompiled sources is read at
+> configure time, so the first pass only produces them; the second compiles and
+> links them (otherwise the link fails with `undefined reference to PPCImageConfig`).
+
 Codegen runs automatically as part of the build (target `thebigs2_codegen`) and
 re-runs only when the XEX or a config file changes. At launch the app looks for
 `game/default.xex` next to the executable, then in the working directory;
@@ -78,7 +83,8 @@ pass `--game_data_root <dir>` to point it anywhere else.
 ### Status (SDK `development` @ bd833a2, Title ID 54540830, XEX v0.0.0.3)
 
 - Codegen: clean after the fixes in `config/overrides.toml` (9 tail-split leaf
-  functions, 4 thunks, 1 leaf behind a wrapper, 2 compressed jump tables).
+  functions, 4 thunks, 1 leaf behind a wrapper, 2 compressed jump tables,
+  43 vtable-only leaf functions, 8 code-built callbacks).
 - Linux build: links, boots, brings up Vulkan via the Xenos GPU plugin, compiles
   shaders and presents frames. With only `default.xex` present it then faults
   on a null pointer right after failing to open its data files — expected
