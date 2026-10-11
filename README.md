@@ -101,6 +101,13 @@ pass `--game_data_root <dir>` to point it anywhere else.
   "Unable To Connect To Device"). Boots, plays, saves and loads on Linux.
 - Windows: same sources and presets; not built yet.
 
+### Frame pacing
+
+The game presents with plain FIFO (vsync) by default; the SDK's own default
+(mailbox/immediate) redraws the same frame 1000+ times a second and makes the
+60 Hz game hitch. For the smoothest result use a 60 Hz or 120 Hz display mode,
+or VRR/G-Sync. Override with e.g. `--vulkan_allow_present_mode_mailbox=true`.
+
 ### Quitting
 
 Press **F10**, or hold **Back + Start** on a controller for 2 seconds. Both

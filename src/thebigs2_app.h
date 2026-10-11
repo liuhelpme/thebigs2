@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <thread>
 
+#include <rex/cvar.h>
 #include <rex/filesystem.h>
 #include <rex/input/input.h>
 #include <rex/input/input_system.h>
@@ -33,6 +34,20 @@ class Thebigs2App : public rex::ReXApp {
   // picked one with --gpu_plugin.
   void OnPreSetup(rex::RuntimeConfig& config) override {
     if (config.gpu_plugin.empty()) config.gpu_plugin = "xenos";
+
+    // Present with plain FIFO (vsync) by default. The SDK prefers immediate,
+    // then mailbox, which redraws the latest guest frame 1000+ times a second;
+    // guest frames (60 Hz emulated vblank) then land unevenly and the game
+    // hitches. Only flags still at their compiled-in default are changed, so
+    // --vulkan_allow_present_mode_*=true on the command line or in a config
+    // file still wins.
+    for (const char* flag : {"vulkan_allow_present_mode_immediate",
+                             "vulkan_allow_present_mode_mailbox",
+                             "vulkan_allow_present_mode_fifo_relaxed"}) {
+      if (rex::cvar::GetFlagSource(flag) == rex::cvar::Source::kDefault) {
+        rex::cvar::SetFlagByName(flag, "false");
+      }
+    }
   }
 
   // Clean quit without Alt+F4. Both routes close the window, which runs the
