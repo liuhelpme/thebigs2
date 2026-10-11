@@ -1,6 +1,10 @@
 # The Bigs 2 — codegen options (included from thebigs2_manifest.toml)
 #
-# Batch A (on): CR/CTR/XER/r1,r2,r13/r11,r12 kept in C++ locals.
+# Batch A (on): CR/CTR/XER/r1,r2,r13 kept in C++ locals.
+# non_argument_as_local must stay OFF: __finally funclets receive the parent
+# frame pointer in r12 (addi r12,r31,N; bl funclet — 1054 sites). As a local,
+# r12 never reaches the funclet, which then unwinds with a garbage frame and
+# can leak a lock (boot deadlock in the heap/pool allocators).
 # skip_msr must stay OFF: ReXGlue turns mtmsrd/mfmsr into the guest's global
 # critical-section lock (391 sites in this game); skipping it hangs at boot.
 # Batch B (off, riskier): non_volatile_as_local and skip_lr — need
@@ -12,7 +16,7 @@ ctr_as_local = true
 xer_as_local = true
 cr_as_local = true
 reserved_as_local = true
-non_argument_as_local = true
+non_argument_as_local = false
 non_volatile_as_local = false
 
 # 2K titles of this era ship PDATA-described SEH; enable if codegen reports
