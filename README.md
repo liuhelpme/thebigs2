@@ -108,6 +108,15 @@ The game presents with plain FIFO (vsync) by default; the SDK's own default
 60 Hz game hitch. For the smoothest result use a 60 Hz or 120 Hz display mode,
 or VRR/G-Sync. Override with e.g. `--vulkan_allow_present_mode_mailbox=true`.
 
+### Rendering defaults
+
+The game renders at **2x** (`--resolution_scale=2`, clean edges at 1440p)
+through the **fragment-shader-interlock EDRAM path**
+(`--render_target_path_vulkan=fsi`). The default host-render-target path
+breaks the game's 2xMSAA targets at 2x (green, striped bat/shoes/cap). GPUs
+without `fragmentShaderSampleInterlock` (e.g. AMD RADV, Steam Deck) fall back to
+host render targets automatically — run those at `--resolution_scale=1`.
+
 ### Quitting
 
 Press **F10**, or hold **Back + Start** on a controller for 2 seconds. Both

@@ -15,6 +15,7 @@
 #include <rex/input/input_system.h>
 #include <rex/logging.h>
 #include <rex/rex_app.h>
+#include <rex/system/gpu_plugin.h>
 #include <rex/runtime.h>
 #include <rex/ui/keybinds.h>
 #include <rex/ui/window.h>
@@ -50,6 +51,25 @@ class Thebigs2App : public rex::ReXApp {
         rex::cvar::SetFlagByName(flag, "false");
       }
     }
+
+    // Render at 2x (clean edges at 1440p) through the fragment-shader-interlock
+    // EDRAM path. With the default host-render-target path, 2x scaling breaks
+    // the game's 2xMSAA targets (bat/shoes/cap come out as green column
+    // stripes). The SDK falls back to host render targets on GPUs without
+    // fragmentShaderSampleInterlock (e.g. RADV/Steam Deck) — use
+    // --resolution_scale=1 there.
+    auto set_default = [](const char* flag, const char* value) {
+      if (rex::cvar::GetFlagSource(flag) == rex::cvar::Source::kDefault) {
+        rex::cvar::SetFlagByName(flag, value);
+      }
+    };
+    // These cvars live in the GPU plugin and only exist once it is loaded, so
+    // load it here (ReXApp skips its own load when config.graphics is set).
+    if (!config.graphics && !config.gpu_plugin.empty()) {
+      config.graphics = rex::system::LoadGpuPlugin(config.gpu_plugin);
+    }
+    set_default("render_target_path_vulkan", "fsi");
+    set_default("resolution_scale", "2");
   }
 
   // Clean quit without Alt+F4. Both routes close the window, which runs the
