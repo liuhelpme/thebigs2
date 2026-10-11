@@ -13,8 +13,11 @@
 #if defined(_WIN32)
 #include <windows.h>
 #else
+#include <csignal>
 #include <dlfcn.h>
+#include <unistd.h>
 #endif
+#include <atomic>
 
 #include <rex/logging.h>
 #include <rex/ui/keybinds.h>
@@ -67,9 +70,29 @@ void CaptureNow() {
   }).detach();
 }
 
+#if !defined(_WIN32)
+// `kill -USR1 <pid>` also triggers a capture, for when there is no window to
+// receive F9. The handler only sets a flag; a watcher thread does the work.
+std::atomic<bool> g_capture_requested{false};
+void OnSigUsr1(int) { g_capture_requested.store(true, std::memory_order_relaxed); }
+#endif
+
 }  // namespace
 
 void TB2_RegisterRenderDocCaptureBind() {
   rex::ui::RegisterBind("bind_renderdoc_capture", "F9",
                         "Capture GPU frames in RenderDoc (when launched from it)", CaptureNow);
+#if !defined(_WIN32)
+  if (GetRenderDoc()) {
+    std::signal(SIGUSR1, OnSigUsr1);
+    std::thread([] {
+      for (;;) {
+        if (g_capture_requested.exchange(false)) CaptureNow();
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
+    }).detach();
+    REXLOG_INFO("[renderdoc] attached: press F9 or run `kill -USR1 {}` to capture",
+                static_cast<long>(getpid()));
+  }
+#endif
 }
