@@ -1,0 +1,4 @@
+#!/bin/sh
+# The Bigs 2 AppImage entry point. Settings: ~/.config/thebigs2/thebigs2.toml
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/usr/bin/thebigs2" "$@"

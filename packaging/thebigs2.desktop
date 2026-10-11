@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=The Bigs 2
+Comment=The Bigs 2 (Xbox 360), statically recompiled
+Exec=thebigs2
+Icon=thebigs2
+Categories=Game;SportsGame;
+Terminal=false

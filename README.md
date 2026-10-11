@@ -14,6 +14,8 @@ No game data is included. You need your own dump of the disc.
 | `config/codegen.toml` | Register/codegen flags and analysis tuning |
 | `config/overrides.toml` | Hand-written function bounds, jump tables, hooks, CRT map |
 | `src/thebigs2_app.h` | `ReXApp` subclass — runtime hooks go here |
+| `src/settings.cpp` | Settings file template, display mode, disc-image (.iso) support |
+| `packaging/` | AppImage recipe (`build-appimage.sh`, desktop file, icon) |
 | `game/` | **Your** extracted disc contents (`default.xex` + data). Git-ignored. |
 | `generated/` | Codegen output — regenerated, never edit by hand |
 
@@ -80,9 +82,73 @@ cmake --build --preset win-amd64-release
 > links them (otherwise the link fails with `undefined reference to PPCImageConfig`).
 
 Codegen runs automatically as part of the build (target `thebigs2_codegen`) and
-re-runs only when the XEX or a config file changes. At launch the app looks for
-`game/default.xex` next to the executable, then in the working directory;
-pass `--game_data_root <dir>` to point it anywhere else.
+re-runs only when the XEX or a config file changes.
+
+**Where the game data comes from**, first match wins:
+
+1. `--game_data_root <dir>` (an extracted disc).
+2. A `game/` folder containing `default.xex` next to the executable (or the
+   AppImage), or in the working directory.
+3. `iso_path` in the settings file (or `--iso_path=...`).
+4. A matching `.iso` next to the executable / AppImage (or in its `game/`).
+5. Otherwise a file picker asks for the disc image and saves it to `iso_path`.
+
+Disc images are read directly — nothing is extracted. Full disc dumps
+(Redump-style, with the video partition) and XISOs both work. The image is
+only accepted if its `default.xex` is byte-identical to the one this build was
+recompiled from (MD5 baked in at configure time from `game/default.xex`).
+
+## 4. Settings file
+
+Settings live in **`thebigs2.toml`**:
+
+- `~/.config/thebigs2/thebigs2.toml` on Linux (`%APPDATA%\thebigs2\` on Windows),
+  written with comments on first launch;
+- or, for a portable install, a `thebigs2.toml` placed next to the executable
+  (not used by the AppImage).
+
+| Setting | Default | |
+|---|---|---|
+| `iso_path` | `""` | Disc image to run |
+| `fullscreen` | `true` | `false` = windowed |
+| `fullscreen_exclusive` | `false` | `false` borderless (desktop mode), `true` switches the monitor mode |
+| `display_resolution` | `"desktop"` | `WIDTHxHEIGHT`: window size, or the exclusive-fullscreen mode |
+| `display_refresh_rate` | `0` | Hz for exclusive fullscreen (`0` = desktop). 60/120 are smoothest |
+| `monitor` | `0` | 0 = default, 1 = first, ... |
+| `present_letterbox` | `true` | Keep 16:9 with bars |
+| `resolution_scale` | `2` | Internal render scale (1 = 720p, 2 = 1440p, 3 = 4K) |
+| `present_effect` | `"bilinear"` | `bilinear`, `cas`, `fsr` |
+| `render_target_path_vulkan` | `"fsi"` | `fsi` or `host` |
+| `bind_quit` | `"F10"` | Quit key |
+
+Any setting can also be passed for one run as `--name=value`.
+
+Notes: the game's own (guest) video mode stays 1280x720 @ 60 Hz no matter what
+the display is set to — `display_resolution` deliberately doesn't use the SDK's
+`resolution` / `window_width` settings, which would also change what the game
+is told its TV is. On Wayland, "exclusive" modes are emulated by the compositor
+and can't change the real refresh rate; set it in your desktop's display
+settings, or run with `SDL_VIDEODRIVER=x11`.
+
+## 5. AppImage (Linux)
+
+After a release build:
+
+```bash
+packaging/build-appimage.sh      # -> out/appimage/TheBigs2-x86_64.AppImage
+```
+
+It bundles the executable, `librexruntime.so`, `libTracyClient.so` and the
+Xenos GPU plugin (~13 MB) — **no game data**. Copy it anywhere, run it, and
+pick your `.iso` on first launch (or put the `.iso` in the same folder). Saves,
+caches and logs go to `~/.local/share/thebigs2/`, settings to
+`~/.config/thebigs2/thebigs2.toml`. The file picker uses xdg-desktop-portal or
+`zenity`; without either, set `iso_path` by hand.
+
+Needs glibc 2.38+ and a GCC 13+ libstdc++ (Ubuntu 24.04, Fedora 39, current
+Arch/SteamOS or newer) and a Vulkan driver. The AppImage contains code
+recompiled from the game's executable, so treat it like the game itself and
+don't distribute it.
 
 ### Status (SDK `development` @ bd833a2, Title ID 54540830, XEX v0.0.0.3)
 
@@ -123,7 +189,7 @@ Press **F10**, or hold **Back + Start** on a controller for 2 seconds. Both
 close the window through the normal shutdown. F10 can be rebound with the
 `bind_quit` setting (e.g. `--bind_quit=Escape`).
 
-## 4. The iteration loop
+## 6. The iteration loop
 
 This is not push-button. Expect the first codegen run to report validation
 errors. The loop is:

@@ -15,12 +15,35 @@ set(THEBIGS2_SOURCES
     src/main.cpp
     src/hooks.cpp
     src/renderdoc_capture.cpp
+    src/settings.cpp
 )
 
 if(WIN32)
     add_executable(thebigs2 WIN32 ${THEBIGS2_SOURCES})
 else()
     add_executable(thebigs2 ${THEBIGS2_SOURCES})
+endif()
+
+# SDL3 is linked into librexruntime; we only need its headers (window mode,
+# file picker).
+if(NOT TARGET SDL3::Headers)
+    find_package(SDL3 CONFIG QUIET)
+endif()
+if(TARGET SDL3::Headers)
+    target_link_libraries(thebigs2 PRIVATE SDL3::Headers)
+elseif(DEFINED REXSDK_DIR AND EXISTS "${REXSDK_DIR}/thirdparty/sdl3/include")
+    target_include_directories(thebigs2 PRIVATE "${REXSDK_DIR}/thirdparty/sdl3/include")
+else()
+    message(FATAL_ERROR "SDL3 headers not found (they ship with the ReXGlue SDK)")
+endif()
+
+# A user's disc image is accepted only if its default.xex is the one this
+# build was recompiled from.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/game/default.xex")
+    file(MD5 "${CMAKE_CURRENT_SOURCE_DIR}/game/default.xex" TB2_XEX_MD5)
+    target_compile_definitions(thebigs2 PRIVATE TB2_XEX_MD5="${TB2_XEX_MD5}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                 "${CMAKE_CURRENT_SOURCE_DIR}/game/default.xex")
 endif()
 
 # GPU emulation is opt-in on the development branch; ship the Xenos plugin.

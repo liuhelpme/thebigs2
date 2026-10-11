@@ -20,6 +20,11 @@
 #include <rex/ui/keybinds.h>
 #include <rex/ui/window.h>
 #include <rex/ui/windowed_app_context.h>
+#include <rex/system.h>
+
+#include <SDL3/SDL.h>
+
+#include "settings.h"
 
 void TB2_RegisterRenderDocCaptureBind();  // renderdoc_capture.cpp
 
@@ -81,6 +86,12 @@ class Thebigs2App : public rex::ReXApp {
                           [this] { RequestQuit("keyboard"); });
     TB2_RegisterRenderDocCaptureBind();
 
+    // Display mode from the settings file (resolution / refresh rate).
+    app_context().CallInUIThreadDeferred([] { tb2::ApplyDisplaySettings(true); });
+    tb2::InstallDisplayWatch([this](std::function<void()> fn) {
+      app_context().CallInUIThreadDeferred(std::move(fn));
+    });
+
     quit_poller_ = std::thread([this] {
       using namespace std::chrono;
       constexpr uint16_t kCombo =
@@ -118,13 +129,23 @@ class Thebigs2App : public rex::ReXApp {
     if (quit_poller_.joinable()) quit_poller_.join();
   }
 
-  // With no --game_data_root, look for the extracted disc in a `game/` folder
-  // next to the executable, then in the working directory.
+  // Settings live in thebigs2.toml: next to the executable if one is there
+  // (portable), else ~/.config/thebigs2/ (%APPDATA%\thebigs2\ on Windows).
+  // A commented template is written on first launch.
+  //
+  // Game data, first match wins: --game_data_root; a `game/` folder (with
+  // default.xex) next to the executable/AppImage or in the working directory;
+  // otherwise a disc image (see OnFinalizePaths).
   void OnConfigurePaths(rex::PathConfig& paths) override {
+    paths.config_path = tb2::ResolveConfigPath(paths.config_path);
+    tb2::EnsureConfigFile(paths.config_path);
+    tb2_config_path_ = paths.config_path;
+    tb2_user_data_root_ = paths.user_data_root;
+
     if (!paths.game_data_root.empty()) return;
     std::error_code ec;
     for (const auto& candidate :
-         {rex::filesystem::GetExecutableFolder() / "game",
+         {rex::filesystem::GetExecutableFolder() / "game", tb2::LauncherFolder() / "game",
           std::filesystem::current_path(ec) / "game"}) {
       if (std::filesystem::is_regular_file(candidate / "default.xex", ec)) {
         paths.game_data_root = candidate;
@@ -133,7 +154,120 @@ class Thebigs2App : public rex::ReXApp {
     }
   }
 
+  // Logs go next to the executable when it is writable, else to the user
+  // data folder (~/.local/share/thebigs2/logs; always the case in an AppImage).
+  void OnConfigureLogging(rex::LogConfig& config) override {
+    if (!tb2::ExeDirWritable()) config.log_dir = tb2_user_data_root_ / "logs";
+  }
+
+  // No game folder: run from a disc image. Uses iso_path from the settings
+  // file, else a matching .iso next to the executable/AppImage, else asks with
+  // a file picker and saves the choice to iso_path.
+  std::optional<rex::PathConfig> OnFinalizePaths(
+      const rex::PathConfig& defaults,
+      std::function<void(rex::PathConfig)> resume) override {
+    if (!defaults.game_data_root.empty()) return defaults;
+
+    std::filesystem::path iso = tb2::IsoPathSetting();
+    if (iso.empty()) iso = tb2::FindIsoNearLauncher();
+    if (!iso.empty()) {
+      std::string error;
+      if (UseIso(iso, error)) {
+        rex::PathConfig paths = defaults;
+        paths.game_data_root = disc_stub_dir();
+        return paths;
+      }
+      REXLOG_ERROR("{}", error);
+      rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, error);
+    }
+
+    pending_paths_ = defaults;
+    resume_ = std::move(resume);
+    rex::ShowSimpleMessageBox(
+        rex::SimpleMessageBoxType::Warning,
+        "Choose your The Bigs 2 disc image (.iso).\n\nIt is remembered in\n" +
+            tb2_config_path_.string());
+    PickIso();
+    return std::nullopt;
+  }
+
+  void OnLoadXexImage(std::string& xex_image) override {
+    (void)xex_image;
+    if (!iso_.empty()) tb2::MountIso(runtime()->file_system(), iso_);
+  }
  private:
+  std::filesystem::path disc_stub_dir() const { return tb2_user_data_root_ / "disc"; }
+
+  bool UseIso(const std::filesystem::path& iso, std::string& error) {
+    if (!tb2::PrepareIso(iso, disc_stub_dir(), error)) return false;
+    iso_ = iso;
+    return true;
+  }
+
+  static SDL_Window* MainWindow() {
+    int n = 0;
+    SDL_Window** w = SDL_GetWindows(&n);
+    SDL_Window* out = (w && n > 0) ? w[0] : nullptr;
+    SDL_free(w);
+    return out;
+  }
+
+  // Async file picker (xdg-desktop-portal / zenity on Linux, the system dialog
+  // on Windows). The game window is hidden meanwhile so a fullscreen window
+  // cannot cover the dialog.
+  void PickIso() {
+    if (SDL_Window* w = MainWindow()) SDL_HideWindow(w);
+    static const SDL_DialogFileFilter kFilters[] = {
+        {"Xbox 360 disc image", "iso;xiso"},
+        {"All files", "*"},
+    };
+    const std::string start = tb2::LauncherFolder().string() + "/";
+    SDL_ShowOpenFileDialog(
+        [](void* self, const char* const* files, int) {
+          auto* app = static_cast<Thebigs2App*>(self);
+          std::string picked;
+          bool failed = !files;
+          if (files && files[0]) picked = files[0];
+          if (failed) REXLOG_ERROR("File dialog failed: {}", SDL_GetError());
+          app->app_context().CallInUIThreadDeferred(
+              [app, picked, failed] { app->OnIsoPicked(picked, failed); });
+        },
+        this, MainWindow(), kFilters, 2, start.c_str(), false);
+  }
+
+  void OnIsoPicked(const std::string& picked, bool failed) {
+    if (picked.empty()) {
+      if (failed) {
+        rex::ShowSimpleMessageBox(
+            rex::SimpleMessageBoxType::Error,
+            "Could not open a file picker. Set iso_path in\n" + tb2_config_path_.string() +
+                "\nor start with --iso_path=/path/to/TheBigs2.iso");
+      }
+      app_context().QuitFromUIThread();
+      return;
+    }
+    std::string error;
+    if (!UseIso(picked, error)) {
+      REXLOG_ERROR("{}", error);
+      rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, error);
+      PickIso();
+      return;
+    }
+    tb2::SetIsoPathSetting(picked);
+    tb2::SaveConfigString(tb2_config_path_, "iso_path", picked);
+    if (SDL_Window* w = MainWindow()) SDL_ShowWindow(w);
+    rex::PathConfig paths = pending_paths_;
+    paths.game_data_root = disc_stub_dir();
+    auto resume = std::move(resume_);
+    resume(std::move(paths));
+  }
+
+  std::filesystem::path tb2_config_path_;
+  std::filesystem::path tb2_user_data_root_;
+  std::filesystem::path iso_;
+  rex::PathConfig pending_paths_;
+  std::function<void(rex::PathConfig)> resume_;
+
   // Safe from any thread: the close itself always runs on the UI thread.
   void RequestQuit(const char* source) {
     if (quitting_.exchange(true)) return;

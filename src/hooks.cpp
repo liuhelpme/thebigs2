@@ -149,6 +149,21 @@ void XeCryptMd5_impl(mapped_void in1, u32 n1, mapped_void in2, u32 n2,
 
 }  // namespace
 
+// Host-side MD5 (used to check that a user's disc matches this build).
+void TB2_Md5(const void* data, size_t size, uint8_t out[16]) {
+  Md5State s;
+  Md5Init(&s);
+  auto* p = static_cast<const uint8_t*>(data);
+  while (size) {
+    uint32_t n = uint32_t(std::min<size_t>(size, 1u << 30));
+    Md5Update(&s, p, n);
+    p += n;
+    size -= n;
+  }
+  Md5Final(&s);
+  std::memcpy(out, s.digest, 16);
+}
+
 REX_HOOK(__imp__XeCryptMd5Init, XeCryptMd5Init_impl)
 REX_HOOK(__imp__XeCryptMd5Update, XeCryptMd5Update_impl)
 REX_HOOK(__imp__XeCryptMd5Final, XeCryptMd5Final_impl)
