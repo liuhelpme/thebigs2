@@ -91,6 +91,10 @@ pass `--game_data_root <dir>` to point it anywhere else.
   without the rest of the disc.
 - All 221 kernel/XAM imports exist in the SDK. Stubs to watch: `RtlUnwind`,
   `__C_specific_handler` (38 functions carry SEH handlers), `XamShowMessageBoxUIEx`.
+- Runtime fixes in `src/hooks.cpp`: Massive ad-server lookup made to fail
+  cleanly (was an endless fault loop on the ad thread), real `XeCryptMd5*`
+  (SDK stubs), and an empty save listing treated as success (was
+  "Unable To Connect To Device"). Boots, plays, saves and loads on Linux.
 - Windows: same sources and presets; not built yet.
 
 ## 4. The iteration loop
