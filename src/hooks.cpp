@@ -198,3 +198,13 @@ REX_HOOK_RAW(sub_823A67C0) {
                "data.device={:08X} data.type={:08X} -> {:08X}",
                user, root, data, flags, dev, type, ctx.r3.u32);
 }
+
+// ---------------------------------------------------------------------------
+// Mid-ASM hook (config/overrides.toml, 0x820D4C48): an empty save listing must
+// read as success with 0 items, not ERROR_NO_MORE_FILES.
+void TB2_EmptySaveListIsSuccess(PPCRegister& r3) {
+  if (r3.u32 == 0x12) {  // ERROR_NO_MORE_FILES
+    REXKRNL_WARN("[save] empty save list: treating ERROR_NO_MORE_FILES as success");
+    r3.u64 = 0;
+  }
+}

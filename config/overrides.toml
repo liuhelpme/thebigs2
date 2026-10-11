@@ -118,6 +118,15 @@ labels   = [0x823132B0, 0x823132D0, 0x823132F0, 0x82313310, 0x823132B0,
 # data = 0x00000000
 # size = 4
 
+# Storage state machine, "enumerate saves" step: after XGetOverlappedResult the
+# game treats only 0 as success; the SDK completes an empty listing with
+# ERROR_NO_MORE_FILES (0x12), which the game files as failure 0x40002 and shows
+# "Unable To Connect To Device". Map 0x12 -> 0 here (count is already 0).
+[[midasm_hook]]
+address = 0x820D4C48            # cmplwi r3,0 after bl XGetOverlappedResult
+name = "TB2_EmptySaveListIsSuccess"
+registers = ["r3"]
+
 # [[midasm_hook]]
 # address = 0x82000000
 # name = "SkipIntroMovies"
