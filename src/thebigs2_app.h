@@ -25,6 +25,9 @@
 #include <SDL3/SDL.h>
 
 #include "settings.h"
+#if defined(TB2_RENDER_TRACE)
+#include "render_trace.h"
+#endif
 
 void TB2_RegisterRenderDocCaptureBind();  // renderdoc_capture.cpp
 
@@ -85,6 +88,9 @@ class Thebigs2App : public rex::ReXApp {
     rex::ui::RegisterBind("bind_quit", "F10", "Quit the game",
                           [this] { RequestQuit("keyboard"); });
     TB2_RegisterRenderDocCaptureBind();
+#if defined(TB2_RENDER_TRACE)
+    TB2TraceInit(tb2_user_data_root_ / "traces");
+#endif
 
     // Display mode from the settings file (resolution / refresh rate).
     app_context().CallInUIThreadDeferred([] { tb2::ApplyDisplaySettings(true); });

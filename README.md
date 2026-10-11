@@ -15,6 +15,8 @@ No game data is included. You need your own dump of the disc.
 | `config/overrides.toml` | Hand-written function bounds, jump tables, hooks, CRT map |
 | `src/thebigs2_app.h` | `ReXApp` subclass — runtime hooks go here |
 | `src/settings.cpp` | Settings file template, display mode, disc-image (.iso) support |
+| `docs/native-renderer.md` | Plan and findings for a native Vulkan renderer |
+| `tools/` | Analysis scripts (call graph, string refs, render-trace generator) |
 | `packaging/` | AppImage recipe (`build-appimage.sh`, desktop file, icon) |
 | `game/` | **Your** extracted disc contents (`default.xex` + data). Git-ignored. |
 | `generated/` | Codegen output — regenerated, never edit by hand |

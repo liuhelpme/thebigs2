@@ -46,6 +46,26 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/game/default.xex")
                  "${CMAKE_CURRENT_SOURCE_DIR}/game/default.xex")
 endif()
 
+# Render call tracing for the native-renderer work (docs/native-renderer.md).
+# Wraps every function in the XDK D3D library and the engine's renderlib with a
+# call counter; F8 records a frame. Off by default (adds ~2,000 wrappers).
+option(TB2_RENDER_TRACE "Build with render call tracing (F8)" OFF)
+if(TB2_RENDER_TRACE)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    set(_trace_cpp "${CMAKE_CURRENT_BINARY_DIR}/render_trace_hooks.cpp")
+    set(_codegen_stamp "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/codegen.build.stamp")
+    add_custom_command(
+        OUTPUT "${_trace_cpp}"
+        COMMAND Python3::Interpreter "${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_render_trace.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/generated/default" "${_trace_cpp}"
+                d3d:823A6400-823DE000 renderlib:82460000-8249B800
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_render_trace.py" "${_codegen_stamp}"
+        COMMENT "Generating render trace wrappers"
+        VERBATIM)
+    target_sources(thebigs2 PRIVATE src/render_trace.cpp "${_trace_cpp}")
+    target_compile_definitions(thebigs2 PRIVATE TB2_RENDER_TRACE=1)
+endif()
+
 # GPU emulation is opt-in on the development branch; ship the Xenos plugin.
 rexglue_setup_target(thebigs2 GPU_PLUGINS xenos)
 
