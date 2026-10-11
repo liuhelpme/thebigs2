@@ -153,3 +153,29 @@ REX_HOOK(__imp__XeCryptMd5Init, XeCryptMd5Init_impl)
 REX_HOOK(__imp__XeCryptMd5Update, XeCryptMd5Update_impl)
 REX_HOOK(__imp__XeCryptMd5Final, XeCryptMd5Final_impl)
 REX_HOOK(__imp__XeCryptMd5, XeCryptMd5_impl)
+
+// ---------------------------------------------------------------------------
+// Save-storage tracing. The game reaches every content/device import through
+// one-instruction wrappers; log each call's arguments and result. Remove once
+// saving works.
+#define TB2_TRACE(addr, label, fmt_args, ...)                                  \
+  REX_EXTERN(__imp__sub_##addr);                                               \
+  REX_HOOK_RAW(sub_##addr) {                                                   \
+    const uint32_t a3 = ctx.r3.u32, a4 = ctx.r4.u32, a5 = ctx.r5.u32,          \
+                   a6 = ctx.r6.u32, a7 = ctx.r7.u32, a8 = ctx.r8.u32;          \
+    (void)a3; (void)a4; (void)a5; (void)a6; (void)a7; (void)a8;                \
+    __imp__sub_##addr(ctx, base);                                              \
+    REXKRNL_WARN("[save] " label "(" fmt_args ") -> {:08X}", __VA_ARGS__,     \
+                 ctx.r3.u32);                                                  \
+  }
+
+TB2_TRACE(823A6208, "ShowDeviceSelector", "user={} type={:08X} flags={:08X} id_ptr={:08X}",
+          a3, a4, a5, a8)
+TB2_TRACE(823A6868, "GetDeviceState", "device={:08X} ovl={:08X}", a3, a4)
+TB2_TRACE(823A6870, "GetDeviceData", "device={:08X} out={:08X}", a3, a4)
+TB2_TRACE(823A6860, "CreateEnumerator", "user={} device={:08X} type={:08X} flags={:08X}",
+          a3, a4, a5, a6)
+TB2_TRACE(823A67C0, "ContentCreate", "user={} root={:08X} data={:08X} flags={:08X}",
+          a3, a4, a5, a6)
+TB2_TRACE(823A6850, "ContentClose", "root={:08X} ovl={:08X}", a3, a4)
+TB2_TRACE(823A7748, "UserGetSigninState", "user={}", a3)
