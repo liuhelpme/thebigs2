@@ -97,6 +97,12 @@ pass `--game_data_root <dir>` to point it anywhere else.
   "Unable To Connect To Device"). Boots, plays, saves and loads on Linux.
 - Windows: same sources and presets; not built yet.
 
+### Quitting
+
+Press **F10**, or hold **Back + Start** on a controller for 2 seconds. Both
+close the window through the normal shutdown. F10 can be rebound with the
+`bind_quit` setting (e.g. `--bind_quit=Escape`).
+
 ## 4. The iteration loop
 
 This is not push-button. Expect the first codegen run to report validation
