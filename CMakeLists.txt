@@ -14,6 +14,7 @@ include(generated/rexglue.cmake)
 set(THEBIGS2_SOURCES
     src/main.cpp
     src/hooks.cpp
+    src/renderdoc_capture.cpp
 )
 
 if(WIN32)

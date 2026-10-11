@@ -20,6 +20,8 @@
 #include <rex/ui/window.h>
 #include <rex/ui/windowed_app_context.h>
 
+void TB2_RegisterRenderDocCaptureBind();  // renderdoc_capture.cpp
+
 class Thebigs2App : public rex::ReXApp {
  public:
   using rex::ReXApp::ReXApp;
@@ -57,6 +59,7 @@ class Thebigs2App : public rex::ReXApp {
   void OnPostSetup() override {
     rex::ui::RegisterBind("bind_quit", "F10", "Quit the game",
                           [this] { RequestQuit("keyboard"); });
+    TB2_RegisterRenderDocCaptureBind();
 
     quit_poller_ = std::thread([this] {
       using namespace std::chrono;
