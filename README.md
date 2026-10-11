@@ -70,6 +70,10 @@ cmake --preset win-amd64-release
 cmake --build --preset win-amd64-release
 ```
 
+> **After changing `config/codegen.toml`:** if the build fails with
+> `thebigs2_pch.h has been modified since the precompiled header was built`,
+> just run the build again — codegen rewrites that header mid-build.
+
 > **First build, or after deleting `generated/default`:** run the configure +
 > build pair **twice**. The build list of recompiled sources is read at
 > configure time, so the first pass only produces them; the second compiles and
