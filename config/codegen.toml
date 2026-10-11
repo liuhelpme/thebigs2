@@ -1,11 +1,13 @@
 # The Bigs 2 — codegen options (included from thebigs2_manifest.toml)
 #
-# Batch A (on): CR/CTR/XER/r1,r2,r13/r11,r12 kept in C++ locals, MSR ops
-# skipped. Batch B (off, riskier): non_volatile_as_local and skip_lr — need
+# Batch A (on): CR/CTR/XER/r1,r2,r13/r11,r12 kept in C++ locals.
+# skip_msr must stay OFF: ReXGlue turns mtmsrd/mfmsr into the guest's global
+# critical-section lock (391 sites in this game); skipping it hangs at boot.
+# Batch B (off, riskier): non_volatile_as_local and skip_lr — need
 # setjmp/longjmp identified first, since they change what survives a longjmp.
 
 skip_lr = false
-skip_msr = true
+skip_msr = false
 ctr_as_local = true
 xer_as_local = true
 cr_as_local = true
