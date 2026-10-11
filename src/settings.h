@@ -36,19 +36,23 @@ std::filesystem::path LauncherFolder();
 std::string IsoPathSetting();
 void SetIsoPathSetting(const std::string& path);
 
-// Checks that `iso` is a readable Xbox 360 disc image whose default.xex is the
-// exact one this build was recompiled from, and copies that default.xex into
-// `stub_dir` (the runtime insists on finding it on the host filesystem).
+// Checks that `iso` is a readable Xbox 360 disc image (full dump or XISO)
+// whose default.xex is the exact one this build was recompiled from.
 // On failure returns false and fills `error` with a user-facing message.
-bool PrepareIso(const std::filesystem::path& iso, const std::filesystem::path& stub_dir,
-                std::string& error);
+bool CheckIso(const std::filesystem::path& iso, std::string& error);
 
 // Looks for a matching *.iso next to the launcher. Returns empty if none.
 std::filesystem::path FindIsoNearLauncher();
 
-// Mounts the disc image and points game:\ and d:\ at it. Call after the
-// runtime's VFS is set up and before the XEX is loaded.
-bool MountIso(rex::filesystem::VirtualFileSystem* vfs, const std::filesystem::path& iso);
+// True if `dir` holds a complete extraction made by ExtractIso.
+bool IsExtractedGame(const std::filesystem::path& dir);
+
+// Extracts every file of the disc image into `dest` (via `dest`.partial, so
+// an interrupted run is never mistaken for a finished one). `progress` gets
+// 0..100 now and then, from the calling thread, and cancels by returning
+// false. Blocking; run off the UI thread.
+bool ExtractIso(const std::filesystem::path& iso, const std::filesystem::path& dest,
+                const std::function<bool(int)>& progress, std::string& error);
 
 // --- Display --------------------------------------------------------------
 

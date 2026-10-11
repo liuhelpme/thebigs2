@@ -89,14 +89,18 @@ re-runs only when the XEX or a config file changes.
 1. `--game_data_root <dir>` (an extracted disc).
 2. A `game/` folder containing `default.xex` next to the executable (or the
    AppImage), or in the working directory.
-3. `iso_path` in the settings file (or `--iso_path=...`).
-4. A matching `.iso` next to the executable / AppImage (or in its `game/`).
-5. Otherwise a file picker asks for the disc image and saves it to `iso_path`.
+3. A previous extraction in the user data folder
+   (`~/.local/share/thebigs2/game`, next to saves and logs).
+4. Otherwise a disc image is extracted there once: `iso_path` from the
+   settings file (or `--iso_path=...`), else a matching `.iso` next to the
+   executable / AppImage, else a file picker asks for it.
 
-Disc images are read directly — nothing is extracted. Full disc dumps
-(Redump-style, with the video partition) and XISOs both work. The image is
-only accepted if its `default.xex` is byte-identical to the one this build was
-recompiled from (MD5 baked in at configure time from `game/default.xex`).
+Full disc dumps (Redump-style, with the video partition) and XISOs both work.
+The image is only accepted if its `default.xex` is byte-identical to the one
+this build was recompiled from (MD5 baked in at configure time from
+`game/default.xex`). Extraction goes to `game.partial/` and is renamed when
+complete, so an interrupted run starts over cleanly. Once extracted, the
+`.iso` is no longer needed. To re-extract, delete `~/.local/share/thebigs2/game`.
 
 ## 4. Settings file
 
@@ -109,7 +113,7 @@ Settings live in **`thebigs2.toml`**:
 
 | Setting | Default | |
 |---|---|---|
-| `iso_path` | `""` | Disc image to run |
+| `iso_path` | `""` | Disc image to extract on first launch |
 | `fullscreen` | `true` | `false` = windowed |
 | `fullscreen_exclusive` | `false` | `false` borderless (desktop mode), `true` switches the monitor mode |
 | `display_resolution` | `"desktop"` | `WIDTHxHEIGHT`: window size, or the exclusive-fullscreen mode |
@@ -140,8 +144,9 @@ packaging/build-appimage.sh      # -> out/appimage/TheBigs2-x86_64.AppImage
 
 It bundles the executable, `librexruntime.so`, `libTracyClient.so` and the
 Xenos GPU plugin (~13 MB) — **no game data**. Copy it anywhere, run it, and
-pick your `.iso` on first launch (or put the `.iso` in the same folder). Saves,
-caches and logs go to `~/.local/share/thebigs2/`, settings to
+pick your `.iso` on first launch (or put the `.iso` in the same folder); the
+window shows extraction progress in its title, then the game starts. Game
+files, saves, caches and logs go to `~/.local/share/thebigs2/`, settings to
 `~/.config/thebigs2/thebigs2.toml`. The file picker uses xdg-desktop-portal or
 `zenity`; without either, set `iso_path` by hand.
 

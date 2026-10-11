@@ -16,7 +16,7 @@
 #include <rex/filesystem.h>
 #include <rex/filesystem/devices/disc_image_device.h>
 #include <rex/filesystem/devices/disc_image_entry.h>
-#include <rex/filesystem/vfs.h>
+#include <rex/filesystem/entry.h>
 #include <rex/logging.h>
 
 #if !defined(_WIN32)
@@ -28,8 +28,8 @@
 #endif
 
 REXCVAR_DEFINE_STRING(iso_path, "", "The Bigs 2",
-                      "Disc image (.iso) to run the game from. Empty: use a game/ folder, "
-                      "or ask on first launch");
+                      "Disc image (.iso) to extract the game from on first launch. Empty: "
+                      "ask with a file picker");
 REXCVAR_DEFINE_STRING(display_resolution, "desktop", "The Bigs 2",
                       "Output resolution: 'desktop' or WIDTHxHEIGHT (e.g. 1920x1080). Window "
                       "size when windowed, display mode in exclusive fullscreen");
@@ -50,8 +50,10 @@ constexpr const char* kTemplate = R"TOML(# The Bigs 2 - settings
 # Delete this file to get the defaults (and these comments) back.
 
 # --- Game disc ---------------------------------------------------------------
-# Your disc image: a full disc dump (.iso) or an XISO. Leave empty to be asked
-# on first launch; the file you pick is saved here.
+# Your disc image: a full disc dump (.iso) or an XISO. On first launch its
+# files are extracted to the user data folder (~/.local/share/thebigs2/game);
+# after that the .iso isn't needed. Leave empty to be asked; the file you pick
+# is saved here.
 iso_path = ""
 
 # --- Display -----------------------------------------------------------------
@@ -237,7 +239,38 @@ void SetIsoPathSetting(const std::string& path) {
   rex::cvar::SetFlagByName("iso_path", path);
 }
 
-bool PrepareIso(const fs::path& iso, const fs::path& stub_dir, std::string& error) {
+namespace {
+
+constexpr const char* kMarker = ".extracted";
+
+bool XexMatches(const rex::filesystem::DiscImageEntry* xex, std::string* actual_out) {
+  const std::string expected = TB2_XEX_MD5;
+  if (expected.empty()) return true;
+  uint8_t digest[16];
+  TB2_Md5(xex->mmap()->data() + xex->data_offset(), xex->size(), digest);
+  std::string actual = LowerHex(digest, 16);
+  if (actual_out) *actual_out = actual;
+  return actual == expected;
+}
+
+using FileList = std::vector<std::pair<fs::path, const rex::filesystem::DiscImageEntry*>>;
+
+void CollectFiles(const rex::filesystem::Entry* dir, const fs::path& rel, FileList& files,
+                  std::vector<fs::path>& dirs) {
+  for (const auto& child : dir->children()) {
+    fs::path p = rel / child->name();
+    if (child->attributes() & rex::filesystem::kFileAttributeDirectory) {
+      dirs.push_back(p);
+      CollectFiles(child.get(), p, files, dirs);
+    } else if (auto* f = dynamic_cast<const rex::filesystem::DiscImageEntry*>(child.get())) {
+      files.emplace_back(p, f);
+    }
+  }
+}
+
+}  // namespace
+
+bool CheckIso(const fs::path& iso, std::string& error) {
   std::error_code ec;
   if (!fs::is_regular_file(iso, ec)) {
     error = "Disc image not found:\n" + iso.string();
@@ -252,33 +285,12 @@ bool PrepareIso(const fs::path& iso, const fs::path& stub_dir, std::string& erro
     error = "This disc image has no default.xex - it is not a game disc:\n" + iso.string();
     return false;
   }
-  const uint8_t* data = disc.xex->mmap()->data() + disc.xex->data_offset();
-  const size_t size = disc.xex->size();
-
-  const std::string expected = TB2_XEX_MD5;
-  if (!expected.empty()) {
-    uint8_t digest[16];
-    TB2_Md5(data, size, digest);
-    const std::string actual = LowerHex(digest, 16);
-    if (actual != expected) {
-      error =
-          "This disc image is not the version of The Bigs 2 this build was made from.\n\n" +
-          iso.string() + "\n\ndefault.xex MD5: " + actual + "\nexpected:        " + expected;
-      return false;
-    }
-  }
-
-  // The runtime checks for default.xex on the host before loading it; give it
-  // a copy. All reads at run time go to the disc image itself.
-  fs::create_directories(stub_dir, ec);
-  const fs::path stub = stub_dir / "default.xex";
-  if (fs::file_size(stub, ec) != size) {
-    std::ofstream out(stub, std::ios::binary | std::ios::trunc);
-    out.write(reinterpret_cast<const char*>(data), std::streamsize(size));
-    if (!out) {
-      error = "Could not write " + stub.string();
-      return false;
-    }
+  std::string actual;
+  if (!XexMatches(disc.xex, &actual)) {
+    error = "This disc image is not the version of The Bigs 2 this build was made from.\n\n" +
+            iso.string() + "\n\ndefault.xex MD5: " + actual + "\nexpected:        " +
+            TB2_XEX_MD5;
+    return false;
   }
   return true;
 }
@@ -292,35 +304,99 @@ fs::path FindIsoNearLauncher() {
       for (auto& c : ext) c = char(std::tolower(static_cast<unsigned char>(c)));
       if (ext != ".iso" || !e.is_regular_file(ec)) continue;
       OpenedDisc disc = OpenDisc(e.path());
-      if (!disc.xex) continue;
-      const std::string expected = TB2_XEX_MD5;
-      if (!expected.empty()) {
-        uint8_t digest[16];
-        TB2_Md5(disc.xex->mmap()->data() + disc.xex->data_offset(), disc.xex->size(), digest);
-        if (LowerHex(digest, 16) != expected) continue;
-      }
-      return e.path();
+      if (disc.xex && XexMatches(disc.xex, nullptr)) return e.path();
     }
   }
   return {};
 }
 
-bool MountIso(rex::filesystem::VirtualFileSystem* vfs, const fs::path& iso) {
-  constexpr const char* kMount = "\\Device\\Cdrom0";
-  auto device = std::make_unique<rex::filesystem::DiscImageDevice>(kMount, iso);
-  if (!device->Initialize()) {
-    REXLOG_ERROR("Failed to open disc image {}", iso.string());
+bool IsExtractedGame(const fs::path& dir) {
+  std::error_code ec;
+  if (!fs::is_regular_file(dir / "default.xex", ec)) return false;
+  std::ifstream in(dir / kMarker);
+  if (!in) return false;
+  std::string md5;
+  in >> md5;
+  // An extraction made for a different build (other XEX) doesn't count.
+  const std::string expected = TB2_XEX_MD5;
+  return expected.empty() || md5 == expected;
+}
+
+bool ExtractIso(const fs::path& iso, const fs::path& dest,
+                const std::function<bool(int)>& progress, std::string& error) {
+  OpenedDisc disc = OpenDisc(iso);
+  if (!disc.device || !disc.xex) {
+    error = "Could not read the disc image:\n" + iso.string();
     return false;
   }
-  if (!vfs->RegisterDevice(std::move(device))) {
-    REXLOG_ERROR("Failed to register disc image device");
+  FileList files;
+  std::vector<fs::path> dirs;
+  CollectFiles(disc.device->root(), {}, files, dirs);
+  uint64_t total = 0;
+  for (auto& [p, f] : files) total += f->size();
+
+  std::error_code ec;
+  const fs::path partial = dest.string() + ".partial";
+  fs::remove_all(partial, ec);
+  fs::create_directories(partial, ec);
+  if (ec) {
+    error = "Could not create " + partial.string() + ":\n" + ec.message();
     return false;
   }
-  for (const char* link : {"game:", "d:"}) {
-    vfs->UnregisterSymbolicLink(link);
-    vfs->RegisterSymbolicLink(link, kMount);
+  const auto space = fs::space(partial, ec);
+  if (!ec && space.available < total + (64ull << 20)) {
+    error = "Not enough free space to extract the game.\n\nNeeded: " +
+            std::to_string((total >> 20) + 64) + " MB\nFree:   " +
+            std::to_string(space.available >> 20) + " MB\nin " + partial.string();
+    fs::remove_all(partial, ec);
+    return false;
   }
-  REXLOG_INFO("Running from disc image {}", iso.string());
+  for (const auto& d : dirs) fs::create_directories(partial / d, ec);
+
+  REXLOG_INFO("Extracting {} ({} files, {} MB) to {}", iso.string(), files.size(), total >> 20,
+              dest.string());
+  uint64_t done = 0;
+  int last_pct = -1;
+  constexpr size_t kChunk = 8u << 20;
+  for (const auto& [rel, f] : files) {
+    std::ofstream out(partial / rel, std::ios::binary | std::ios::trunc);
+    const char* src = reinterpret_cast<const char*>(f->mmap()->data() + f->data_offset());
+    size_t left = f->size();
+    while (out && left) {
+      size_t n = std::min(left, kChunk);
+      out.write(src, std::streamsize(n));
+      src += n;
+      left -= n;
+      done += n;
+      int pct = total ? int(done * 100 / total) : 100;
+      if (pct != last_pct) {
+        last_pct = pct;
+        if (!progress(pct)) {
+          out.close();
+          fs::remove_all(partial, ec);
+          error = "cancelled";
+          return false;
+        }
+      }
+    }
+    out.close();
+    if (!out) {
+      error = "Failed writing " + (partial / rel).string() + "\n(disk full or no permission?)";
+      fs::remove_all(partial, ec);
+      return false;
+    }
+  }
+  {
+    std::ofstream marker(partial / kMarker);
+    marker << TB2_XEX_MD5 << "\n" << iso.string() << "\n";
+  }
+  fs::remove_all(dest, ec);
+  fs::rename(partial, dest, ec);
+  if (ec) {
+    error = "Could not move the extracted game into place:\n" + ec.message();
+    return false;
+  }
+  REXLOG_INFO("Extraction finished");
   return true;
 }
 
