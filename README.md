@@ -190,6 +190,13 @@ breaks the game's 2xMSAA targets at 2x (green, striped bat/shoes/cap). GPUs
 without `fragmentShaderSampleInterlock` (e.g. AMD RADV, Steam Deck) fall back to
 host render targets automatically — run those at `--resolution_scale=1`.
 
+On NVIDIA, the SDK's `development` branch (bd833a2) hangs the GPU at 2x within
+a few minutes (kernel log: `Xid 109 ... CTX SWITCH TIMEOUT`). The player
+shaders sample a cube map with explicit gradients after a per-pixel branch,
+which the driver doesn't survive. The fix (cube maps sampled with an LOD
+computed from the gradients, setting `spirv_cube_lod_from_gradients`) is not
+upstream yet; until it is, use `--resolution_scale=1` with an unpatched SDK.
+
 ### Quitting
 
 Press **F10**, or hold **Back + Start** on a controller for 2 seconds. Both
