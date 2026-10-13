@@ -101,6 +101,44 @@ render_target_path_vulkan = "fsi"
 # --- Controls ----------------------------------------------------------------
 # Keyboard key that quits (controller: hold Back + Start for 2 seconds).
 bind_quit = "F10"
+
+# --- Keyboard as controller --------------------------------------------------
+# The keyboard plays as player 1's controller, together with the first pad.
+# false = keyboard does nothing in game (the hotkeys above still work).
+mnk_mode = true
+
+# Each button takes one key or several, separated by commas ("Q,I"), and a key
+# may need modifiers ("Shift+Up"). Modifiers must match exactly, so "Up" and
+# "Shift+Up" can drive different buttons. Key names: A-Z, 0-9, F1-F24, Space,
+# Return, Tab, Backspace, Escape, Delete, Insert, Home, End, PageUp, PageDown,
+# Up, Down, Left, Right, Semicolon, Quote, Comma, Period, Slash, Backslash,
+# Minus, Plus, LBracket, RBracket, Backtick, Numpad0-Numpad9, NumpadPlus,
+# NumpadMinus, NumpadStar, NumpadSlash, NumpadEnter, CapsLock, LMB, RMB, MMB.
+# Don't reuse the hotkeys F8, F9, F10.
+keybind_a = "Semicolon,Space"
+keybind_b = "Quote,Backspace"
+keybind_x = "L"
+keybind_y = "P"
+keybind_left_shoulder = "1"
+keybind_right_shoulder = "3"
+keybind_left_trigger = "Q,I"
+keybind_right_trigger = "E,O"
+keybind_back = "Z,Tab"
+keybind_start = "X,Return"
+keybind_lstick_up = "W"
+keybind_lstick_down = "S"
+keybind_lstick_left = "A"
+keybind_lstick_right = "D"
+keybind_lstick_press = "F"
+keybind_rstick_up = "Up"
+keybind_rstick_down = "Down"
+keybind_rstick_left = "Left"
+keybind_rstick_right = "Right"
+keybind_rstick_press = "K"
+keybind_dpad_up = "Shift+Up"
+keybind_dpad_down = "Shift+Down"
+keybind_dpad_left = "Shift+Left"
+keybind_dpad_right = "Shift+Right"
 )TOML";
 
 fs::path PlatformConfigDir() {

@@ -78,6 +78,10 @@ class Thebigs2App : public rex::ReXApp {
     }
     set_default("render_target_path_vulkan", "fsi");
     set_default("resolution_scale", "2");
+
+    // The keyboard acts as player 1's controller (merged with the first pad,
+    // so both work at once). Bindings are the keybind_* settings.
+    set_default("mnk_mode", "true");
   }
 
   // Clean quit without Alt+F4. Both routes close the window, which runs the

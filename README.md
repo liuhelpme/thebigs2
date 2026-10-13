@@ -126,8 +126,32 @@ Settings live in **`thebigs2.toml`**:
 | `present_effect` | `"bilinear"` | `bilinear`, `cas`, `fsr` |
 | `render_target_path_vulkan` | `"fsi"` | `fsi` or `host` |
 | `bind_quit` | `"F10"` | Quit key |
+| `mnk_mode` | `true` | Keyboard plays as player 1's controller (alongside the first pad) |
+| `keybind_*` | see below | Keyboard bindings for each controller input |
 
 Any setting can also be passed for one run as `--name=value`.
+
+### Keyboard controls
+
+The keyboard is player 1's controller, merged with the first gamepad so both
+work at once. Each `keybind_*` setting takes one or more keys separated by
+commas, optionally with modifiers (`"Shift+Up"`); modifiers must match exactly,
+which lets the arrows drive the right stick and Shift+arrows the D-pad. The
+settings file lists every accepted key name.
+
+| Controller | Default keys | Setting |
+|---|---|---|
+| A / B / X / Y | `;` or Space / `'` or Backspace / L / P | `keybind_a`, `_b`, `_x`, `_y` |
+| LB / RB | 1 / 3 | `keybind_left_shoulder`, `keybind_right_shoulder` |
+| LT / RT | Q or I / E or O | `keybind_left_trigger`, `keybind_right_trigger` |
+| Back / Start | Z or Tab / X or Return | `keybind_back`, `keybind_start` |
+| Left stick (click) | W A S D (F) | `keybind_lstick_up/down/left/right/press` |
+| Right stick (click) | arrow keys (K) | `keybind_rstick_up/down/left/right/press` |
+| D-pad | Shift + arrow keys | `keybind_dpad_up/down/left/right` |
+
+Holding Back + Start for 2 seconds quits from the keyboard too. Settings files
+written before this feature have no keyboard section; the defaults above still
+apply, and you can copy the `keybind_*` lines in to change them.
 
 Notes: the game's own (guest) video mode stays 1280x720 @ 60 Hz no matter what
 the display is set to — `display_resolution` deliberately doesn't use the SDK's
