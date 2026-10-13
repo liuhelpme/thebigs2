@@ -12,9 +12,10 @@ class VirtualFileSystem;
 
 namespace tb2 {
 
-// Where thebigs2.toml lives: next to the executable if one is already there
-// (portable install), otherwise $XDG_CONFIG_HOME/thebigs2/ (~/.config/...) on
-// Linux or %APPDATA%\thebigs2\ on Windows. Always the latter inside an AppImage.
+// Where thebigs2.toml lives: config/ next to a portable AppImage; next to the
+// executable if one is already there (portable install); otherwise
+// $XDG_CONFIG_HOME/thebigs2/ (~/.config/...) on Linux or %APPDATA%\thebigs2\
+// on Windows.
 std::filesystem::path ResolveConfigPath(const std::filesystem::path& exe_dir_default);
 
 // Writes the commented template if the file does not exist yet.
@@ -30,6 +31,16 @@ bool ExeDirWritable();
 // The directory a user would think of as "where the game is": the folder that
 // holds the AppImage when running from one, else the executable's folder.
 std::filesystem::path LauncherFolder();
+
+// AppImage in a writable folder: everything lives in subfolders next to it
+// (game/, config/, saves/, cache/, logs/) instead of ~/.config and
+// ~/.local/share.
+bool PortableMode();
+
+// First portable run in a folder: copies the saves (from `old_user_data`) and
+// the settings file (~/.config/thebigs2) of a non-portable install into the
+// portable folders, if those don't exist yet. The originals are kept.
+void MigrateToPortable(const std::filesystem::path& old_user_data);
 
 // --- Disc image -----------------------------------------------------------
 

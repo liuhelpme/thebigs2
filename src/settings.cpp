@@ -51,8 +51,8 @@ constexpr const char* kTemplate = R"TOML(# The Bigs 2 - settings
 
 # --- Game disc ---------------------------------------------------------------
 # Your disc image: a full disc dump (.iso) or an XISO. On first launch its
-# files are extracted to the user data folder (~/.local/share/thebigs2/game);
-# after that the .iso isn't needed. Leave empty to be asked; the file you pick
+# files are extracted to the game folder next to the AppImage (or to
+# ~/.local/share/thebigs2/game); after that the .iso isn't needed. Leave empty to be asked; the file you pick
 # is saved here.
 iso_path = ""
 
@@ -194,6 +194,7 @@ OpenedDisc OpenDisc(const fs::path& iso) {
 
 fs::path ResolveConfigPath(const fs::path& exe_dir_default) {
   std::error_code ec;
+  if (PortableMode()) return LauncherFolder() / "config" / kConfigName;
   if (!InAppImage() && fs::is_regular_file(exe_dir_default, ec)) {
     return exe_dir_default;  // portable: a config next to the binary wins
   }
@@ -269,6 +270,53 @@ fs::path LauncherFolder() {
     return fs::path(appimage).parent_path();
   }
   return rex::filesystem::GetExecutableFolder();
+}
+
+bool PortableMode() {
+  static const bool portable = [] {
+    if (!InAppImage()) return false;
+#if defined(_WIN32)
+    return true;
+#else
+    if (access(LauncherFolder().c_str(), W_OK) == 0) return true;
+    // Logging isn't up yet; stderr is all there is.
+    std::fprintf(stderr,
+                 "thebigs2: %s is not writable, using ~/.config and ~/.local/share instead "
+                 "of a portable setup\n",
+                 LauncherFolder().c_str());
+    return false;
+#endif
+  }();
+  return portable;
+}
+
+void MigrateToPortable(const fs::path& old_user_data) {
+  std::error_code ec;
+  const fs::path old_config = PlatformConfigDir() / kConfigName;
+  const fs::path root = LauncherFolder();
+  const fs::path saves = root / "saves";
+  if (!fs::exists(saves, ec) && fs::is_directory(old_user_data, ec)) {
+    // Profiles (save games) and achievements; not the extracted game, the
+    // shader cache or logs, which are rebuilt or not worth carrying over.
+    fs::create_directories(saves, ec);
+    for (const auto& e : fs::directory_iterator(old_user_data, ec)) {
+      const std::string name = e.path().filename().string();
+      if (!e.is_directory(ec) || name == "game" || name == "game.partial" || name == "cache" ||
+          name == "logs" || name == "traces") {
+        continue;
+      }
+      fs::copy(e.path(), saves / name, fs::copy_options::recursive, ec);
+      std::fprintf(stderr, "thebigs2: copied %s to %s%s\n", e.path().c_str(),
+                   (saves / name).c_str(), ec ? (" FAILED: " + ec.message()).c_str() : "");
+    }
+  }
+  const fs::path config = root / "config" / kConfigName;
+  if (!fs::exists(config, ec) && fs::is_regular_file(old_config, ec)) {
+    fs::create_directories(config.parent_path(), ec);
+    fs::copy_file(old_config, config, ec);
+    std::fprintf(stderr, "thebigs2: copied %s to %s%s\n", old_config.c_str(), config.c_str(),
+                 ec ? (" FAILED: " + ec.message()).c_str() : "");
+  }
 }
 
 std::string IsoPathSetting() { return REXCVAR_GET(iso_path); }

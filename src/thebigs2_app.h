@@ -146,7 +146,20 @@ class Thebigs2App : public rex::ReXApp {
   // Game data, first match wins: --game_data_root; a `game/` folder (with
   // default.xex) next to the executable/AppImage or in the working directory;
   // otherwise a disc image (see OnFinalizePaths).
+  //
+  // Portable AppImage (see tb2::PortableMode): saves and the shader cache go
+  // to saves/ and cache/ next to the AppImage, unless set on the command line.
   void OnConfigurePaths(rex::PathConfig& paths) override {
+    if (tb2::PortableMode()) {
+      const auto root = tb2::LauncherFolder();
+      tb2::MigrateToPortable(paths.user_data_root);
+      if (rex::cvar::GetFlagSource("user_data_root") == rex::cvar::Source::kDefault) {
+        paths.user_data_root = root / "saves";
+      }
+      if (rex::cvar::GetFlagSource("cache_root") == rex::cvar::Source::kDefault) {
+        paths.cache_root = root / "cache";
+      }
+    }
     paths.config_path = tb2::ResolveConfigPath(paths.config_path);
     tb2::EnsureConfigFile(paths.config_path);
     tb2_config_path_ = paths.config_path;
@@ -164,15 +177,19 @@ class Thebigs2App : public rex::ReXApp {
     }
   }
 
-  // Logs go next to the executable when it is writable, else to the user
-  // data folder (~/.local/share/thebigs2/logs; always the case in an AppImage).
+  // Logs go to logs/ next to a portable AppImage, next to the executable when
+  // it is writable, else to the user data folder (~/.local/share/thebigs2/logs).
   void OnConfigureLogging(rex::LogConfig& config) override {
-    if (!tb2::ExeDirWritable()) config.log_dir = tb2_user_data_root_ / "logs";
+    if (tb2::PortableMode()) {
+      config.log_dir = tb2::LauncherFolder() / "logs";
+    } else if (!tb2::ExeDirWritable()) {
+      config.log_dir = tb2_user_data_root_ / "logs";
+    }
   }
 
-  // No game folder: extract the disc image into the user data folder
-  // (~/.local/share/thebigs2/game, next to saves and logs) once, then run from
-  // there. The image comes from iso_path in the settings file, else a matching
+  // No game folder: extract the disc image once, into game/ next to a portable
+  // AppImage or else the user data folder (~/.local/share/thebigs2/game), then
+  // run from there. The image comes from iso_path in the settings file, else a matching
   // .iso next to the executable/AppImage, else a file picker.
   std::optional<rex::PathConfig> OnFinalizePaths(
       const rex::PathConfig& defaults,
@@ -213,7 +230,9 @@ class Thebigs2App : public rex::ReXApp {
   }
 
  private:
-  std::filesystem::path extracted_dir() const { return tb2_user_data_root_ / "game"; }
+  std::filesystem::path extracted_dir() const {
+    return tb2::PortableMode() ? tb2::LauncherFolder() / "game" : tb2_user_data_root_ / "game";
+  }
 
   static SDL_Window* MainWindow() {
     int n = 0;

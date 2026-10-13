@@ -1,4 +1,5 @@
 #!/bin/sh
-# The Bigs 2 AppImage entry point. Settings: ~/.config/thebigs2/thebigs2.toml
+# The Bigs 2 AppImage entry point. Portable: game/, config/, saves/, cache/ and
+# logs/ live next to the AppImage (see tb2::PortableMode).
 HERE="$(dirname "$(readlink -f "$0")")"
 exec "$HERE/usr/bin/thebigs2" "$@"
