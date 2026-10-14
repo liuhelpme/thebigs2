@@ -24,6 +24,7 @@
 
 #include <SDL3/SDL.h>
 
+#include "frame_stats.h"
 #include "settings.h"
 #if defined(TB2_RENDER_TRACE)
 #include "render_trace.h"
@@ -92,6 +93,7 @@ class Thebigs2App : public rex::ReXApp {
     rex::ui::RegisterBind("bind_quit", "F10", "Quit the game",
                           [this] { RequestQuit("keyboard"); });
     TB2_RegisterRenderDocCaptureBind();
+    SetGuestFrameStats(&tb2::GuestFrameStats);
 #if defined(TB2_RENDER_TRACE)
     TB2TraceInit(tb2_user_data_root_ / "traces");
 #endif

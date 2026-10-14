@@ -16,6 +16,7 @@ set(THEBIGS2_SOURCES
     src/hooks.cpp
     src/renderdoc_capture.cpp
     src/settings.cpp
+    src/frame_stats.cpp
 )
 
 if(WIN32)

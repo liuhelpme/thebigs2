@@ -72,8 +72,9 @@ fullscreen_exclusive = false
 display_resolution = "desktop"
 
 # Monitor refresh rate in Hz, exclusive fullscreen only. 0 = the desktop rate.
-# The game runs at 60 fps: 60 or 120 give the smoothest motion; 144/165 will
-# judder slightly unless you have VRR (G-Sync/FreeSync).
+# The game runs at 60 fps in menus and 30 in matches (see fps_60): 60 or 120
+# give the smoothest motion; 144/165 will judder slightly unless you have VRR
+# (G-Sync/FreeSync).
 display_refresh_rate = 0
 
 # Monitor to open on: 0 = system default, 1 = first, 2 = second, ...
@@ -83,9 +84,10 @@ monitor = 0
 present_letterbox = true
 
 # --- Scaling -----------------------------------------------------------------
-# Internal render scale. The game draws at 1280x720; 2 renders at 2560x1440,
-# 3 at 3840x2160. Higher is sharper and slower. Use 1 on GPUs without fragment
-# shader interlock (AMD RADV, Steam Deck) - see render_target_path_vulkan.
+# Internal render scale: 1 = 1x (the game's own 1280x720), 2 = 2x (2560x1440),
+# 3 = 3x (3840x2160). Higher is sharper and slower. Use 1 on GPUs without
+# fragment shader interlock (AMD RADV, Steam Deck) - see
+# render_target_path_vulkan - and with fps_60 = true.
 resolution_scale = 2
 
 # How the picture is scaled to the screen: "bilinear" (default), "cas"
@@ -97,6 +99,14 @@ present_effect = "bilinear"
 # bat, cap and shoes get green stripes). GPUs without fragment shader
 # interlock always use "host".
 render_target_path_vulkan = "fsi"
+
+# --- Experimental ------------------------------------------------------------
+# 60 fps in matches. The game caps matches at 30 fps (menus already run at
+# 60); true lifts that cap. Game speed stays correct - the game steps by real
+# time. BEST USED WITH resolution_scale = 1: at 2x the GPU usually can't keep
+# 60 and the frame rate swings between 40 and 50, which looks worse than a
+# steady 30. If it stutters, set resolution_scale = 1 or turn this off.
+fps_60 = false
 
 # --- Controls ----------------------------------------------------------------
 # Keyboard key that quits (controller: hold Back + Start for 2 seconds).

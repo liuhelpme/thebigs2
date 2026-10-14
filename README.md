@@ -122,9 +122,11 @@ Settings live in **`thebigs2.toml`**:
 | `display_refresh_rate` | `0` | Hz for exclusive fullscreen (`0` = desktop). 60/120 are smoothest |
 | `monitor` | `0` | 0 = default, 1 = first, ... |
 | `present_letterbox` | `true` | Keep 16:9 with bars |
-| `resolution_scale` | `2` | Internal render scale (1 = 720p, 2 = 1440p, 3 = 4K) |
+| `resolution_scale` | `2` | Internal render scale: `1` = 1x (720p), `2` = 2x (1440p), `3` = 3x (4K) |
 | `present_effect` | `"bilinear"` | `bilinear`, `cas`, `fsr` |
 | `render_target_path_vulkan` | `"fsi"` | `fsi` or `host` |
+| `fps_60` | `false` | **Experimental.** 60 fps in matches instead of 30 — best with `resolution_scale = 1` (see below) |
+| `fps_log_interval` | `0` | Log the frame rate every N seconds (`0` = off) |
 | `bind_quit` | `"F10"` | Quit key |
 | `mnk_mode` | `true` | Keyboard plays as player 1's controller (alongside the first pad) |
 | `keybind_*` | see below | Keyboard bindings for each controller input |
@@ -218,6 +220,19 @@ The game presents with plain FIFO (vsync) by default; the SDK's own default
 (mailbox/immediate) redraws the same frame 1000+ times a second and makes the
 60 Hz game hitch. For the smoothest result use a 60 Hz or 120 Hz display mode,
 or VRR/G-Sync. Override with e.g. `--vulkan_allow_present_mode_mailbox=true`.
+
+### 60 fps (experimental)
+
+The game runs menus at 60 fps but caps matches at 30 (it asks for a flip every
+second vblank). `fps_60 = true` lifts that cap. Gameplay speed is unaffected:
+the game steps its simulation by measured real time. **Use it with
+`resolution_scale = 1`**: at 1x an RTX 4060 holds 60 at ~40% GPU load, while
+at 2x the FSI render path is GPU-bound at 40–50 fps, which paces worse than a
+steady 30. It needs the SDK's command-processor fix (bulk register writes,
+`fix/stability` dfd3581); without it even 1x stays near 30.
+
+To check, press F3 for the debug overlay (shows the game's fps) or run with
+`--fps_log_interval=5`.
 
 ### Rendering defaults
 
