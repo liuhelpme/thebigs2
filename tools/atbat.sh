@@ -5,6 +5,7 @@
 #
 #   tools/atbat.sh <outdir> [game args...]   e.g. --resolution_scale=1
 #   RDC=1 tools/atbat.sh ...                 also RenderDoc-capture the at-bat (F9)
+#   HOLD=60 tools/atbat.sh ...               then keep pitching for 60 s
 #
 # Writes <outdir>/bat0..3.png (the at-bat) and tut*.png (tutorial pages seen).
 # Needs gamescope, xdotool, python3 + PIL/numpy; the game data in game/.
@@ -32,5 +33,7 @@ for t in $(seq 0 19); do
 done
 for i in 0 1 2 3; do shot "bat$i"; sleep 1; done
 [ -n "$RDC" ] && key F9 10
+# HOLD=<s>: keep playing that long (A every few seconds pitches) before quitting
+if [ -n "$HOLD" ]; then end=$(( $(date +%s) + HOLD )); while [ "$(date +%s)" -lt "$end" ]; do key space 4; done; fi
 key F10 8
 kill $GS 2>/dev/null; sleep 1

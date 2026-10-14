@@ -72,6 +72,9 @@ these fixes on a local branch (`fix/stability`, not in the upstream SDK):
 | dfd3581 | Bulk type-0 register writes in the command processor | `fps_60` can't get past ~30 fps |
 | a4b505d | Libraries pinned to older glibc symbol versions | Built on a glibc 2.43 system, nothing loads on SteamOS |
 | ad05653 | 4xMSAA depth resolve reads each 8-sample half at its own address | At 1x, dashed streaks on and around players (depth-of-field fed garbage depth every 8 rows) |
+| 690bf1c | RenderDoc used only when already loaded | Where RenderDoc is installed (SteamOS), every run loads it: capture overhead and its overlay text in the corner |
+| aa272a5 | Multi-object waits block instead of spinning; thread names fit Linux's 15 chars | The audio thread spins ~77% of a core |
+| 0330f2e | Timer queue thread blocks between timers | ~10% of a core while idle |
 
 With an unpatched SDK the game still runs; use `resolution_scale = 1` and
 leave `fps_60` off.
@@ -311,7 +314,15 @@ steady 30. It needs the SDK's command-processor fix (bulk register writes,
 `fix/stability` dfd3581); without it even 1x stays near 30.
 
 To check, press F3 for the debug overlay (shows the game's fps) or run with
-`--fps_log_interval=5`.
+`--fps_log_interval=5`: every 5 s the log gets the frame rate, the number of
+long (> 20.8 ms) and short frames, the time spent waiting for the GPU, and the
+busiest threads' CPU use (`game*` is the game's render thread). On the Steam
+Deck add it to the game's Launch Options in Steam.
+
+The game waits for the GPU in a busy loop (fine on the Xbox 360's six hardware
+threads); a hook sleeps 0.1 ms between its polls instead
+(`gpu_wait_sleep_us`, 0 = spin as before), which saves a whole CPU core - on
+the Deck, CPU and GPU share one power budget.
 
 ### Rendering defaults
 

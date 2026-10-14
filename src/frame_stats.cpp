@@ -8,6 +8,18 @@
 #include <atomic>
 #include <chrono>
 #include <mutex>
+#include <thread>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#if defined(__linux__)
+#include <dirent.h>
+#include <unistd.h>
+
+#include <fstream>
+#include <sstream>
+#endif
 
 #include <rex/cvar.h>
 #include <rex/logging.h>
@@ -31,10 +43,57 @@ Clock::time_point g_window_start{};
 uint64_t g_window_frames = 0;
 double g_window_max_ms = 0;
 double g_window_min_ms = 0;
+uint32_t g_window_long = 0;  // frames over 1.25x the window's target (20.8 ms at 60 fps)
+uint32_t g_window_short = 0; // frames under 0.5x (8.3 ms) - the catch-up after a long one
 // Time inside the swap call: D3D blocks there until the GPU has finished the
 // previous frame (which itself waits for its vblank), so this is idle time.
 double g_window_swap_ms = 0;
 Clock::time_point g_swap_start{};
+std::atomic<int> g_swap_tid{0};
+
+#if defined(__linux__)
+// Per-thread CPU use since the last call, busiest first ("name 87%"), from
+// /proc/self/task. 100% = one core. The thread calling the game's swap is
+// marked "game*" (its render thread).
+std::string ThreadCpuReport(double secs) {
+  static std::unordered_map<int, uint64_t> last_ticks;
+  static const double ticks_per_sec = double(sysconf(_SC_CLK_TCK));
+  std::vector<std::pair<double, std::string>> rows;
+  double total = 0;
+  if (DIR* dir = opendir("/proc/self/task")) {
+    while (dirent* e = readdir(dir)) {
+      const int tid = std::atoi(e->d_name);
+      if (tid <= 0) continue;
+      std::ifstream in(std::string("/proc/self/task/") + e->d_name + "/stat");
+      std::string stat((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+      const size_t open = stat.find('('), close = stat.rfind(')');
+      if (open == std::string::npos || close == std::string::npos) continue;
+      std::string name = stat.substr(open + 1, close - open - 1);
+      std::istringstream rest(stat.substr(close + 2));
+      std::string field;
+      uint64_t utime = 0, stime = 0;
+      for (int i = 3; i <= 15 && rest >> field; ++i) {
+        if (i == 14) utime = std::stoull(field);
+        if (i == 15) stime = std::stoull(field);
+      }
+      const uint64_t ticks = utime + stime;
+      auto [it, inserted] = last_ticks.try_emplace(tid, ticks);
+      const double pct = inserted ? 0 : 100.0 * double(ticks - it->second) / ticks_per_sec / secs;
+      it->second = ticks;
+      total += pct;
+      if (tid == g_swap_tid.load(std::memory_order_relaxed)) name = "game*";
+      if (pct >= 1.0) rows.emplace_back(pct, name);
+    }
+    closedir(dir);
+  }
+  std::sort(rows.begin(), rows.end(), [](auto& a, auto& b) { return a.first > b.first; });
+  std::string out = fmt::format("cpu {:.0f}%:", total);
+  for (size_t i = 0; i < rows.size() && i < 8; ++i) {
+    out += fmt::format(" {} {:.0f}%", rows[i].second, rows[i].first);
+  }
+  return out;
+}
+#endif
 
 void OnSwapReturn() {
   const auto now = Clock::now();
@@ -47,11 +106,18 @@ void OnSwap() {
   std::lock_guard lock(g_mutex);
   g_swap_start = now;
   ++g_frames;
+#if defined(__linux__)
+  if (g_swap_tid.load(std::memory_order_relaxed) == 0) {
+    g_swap_tid.store(int(gettid()), std::memory_order_relaxed);
+  }
+#endif
   if (g_last != Clock::time_point{}) {
     const double ms = std::chrono::duration<double, std::milli>(now - g_last).count();
     g_ema_ms = g_ema_ms == 0 ? ms : g_ema_ms * 0.95 + ms * 0.05;
     g_window_max_ms = std::max(g_window_max_ms, ms);
     g_window_min_ms = g_window_frames == 0 ? ms : std::min(g_window_min_ms, ms);
+    g_window_long += ms > 20.8;
+    g_window_short += ms < 8.3;
     ++g_window_frames;
   } else {
     g_window_start = now;
@@ -62,13 +128,20 @@ void OnSwap() {
   if (interval <= 0) return;
   const double secs = std::chrono::duration<double>(now - g_window_start).count();
   if (secs >= interval && g_window_frames > 0) {
-    REXLOG_INFO("[fps] {:.1f} fps over {:.1f}s (frame {:.1f}-{:.1f} ms, {:.1f} ms of it in swap)",
-                g_window_frames / secs, secs, g_window_min_ms, g_window_max_ms,
-                g_window_swap_ms / g_window_frames);
+    REXLOG_INFO(
+        "[fps] {:.1f} fps over {:.1f}s (frame {:.1f}-{:.1f} ms, {} over 20.8 ms, {} under 8.3 ms, "
+        "{:.1f} ms of it in swap)",
+        g_window_frames / secs, secs, g_window_min_ms, g_window_max_ms, g_window_long,
+        g_window_short, g_window_swap_ms / g_window_frames);
+#if defined(__linux__)
+    REXLOG_INFO("[fps] {}", ThreadCpuReport(secs));
+#endif
     g_window_start = now;
     g_window_frames = 0;
     g_window_max_ms = 0;
     g_window_swap_ms = 0;
+    g_window_long = 0;
+    g_window_short = 0;
   }
 }
 
@@ -93,6 +166,24 @@ extern "C" REX_FUNC(sub_823BA340) {
   OnSwap();
   __imp__sub_823BA340(ctx, base);
   OnSwapReturn();
+}
+
+// sub_823B3310: one iteration of D3D's wait-for-GPU loop (sub_823B2160 calls
+// it until the GPU's fence catches up). It busy-waits (db16cyc pauses, then
+// re-reads the fence and checks a hang timeout) - fine on the 360's six
+// hardware threads, but here it kept the render thread at 100% of a core for
+// the whole GPU wait, ~15 of 16.7 ms per frame. On the Steam Deck that CPU
+// power comes out of the GPU's share of the 15 W budget. Returns nonzero to
+// keep waiting: sleep a little before the next poll.
+REXCVAR_DEFINE_INT32(gpu_wait_sleep_us, 100, "The Bigs 2/Debug",
+                     "Sleep between polls while the game waits for the GPU (us); 0 = spin");
+extern "C" REX_FUNC(__imp__sub_823B3310);
+extern "C" REX_FUNC(sub_823B3310) {
+  __imp__sub_823B3310(ctx, base);
+  const int32_t sleep_us = REXCVAR_GET(gpu_wait_sleep_us);
+  if (ctx.r3.u32 != 0 && sleep_us > 0) {
+    std::this_thread::sleep_for(std::chrono::microseconds(sleep_us));
+  }
 }
 #endif
 
