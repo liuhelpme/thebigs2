@@ -8,20 +8,24 @@
 #   HOLD=60 tools/atbat.sh ...               then keep pitching for 60 s
 #
 # Writes <outdir>/bat0..3.png (the at-bat) and tut*.png (tutorial pages seen).
+# Saves go to <outdir>/data (a fresh profile-less folder), never the user's.
 # Needs gamescope, xdotool, python3 + PIL/numpy; the game data in game/.
 O="$1"; shift; mkdir -p "$O"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 [ -n "$RDC" ] && RDC="${RENDERDOCCMD:-renderdoccmd} capture -w -c $O/cap"
+# WRAP="<cmd>": launch the game through it instead (e.g. a gdb sampler)
+[ -n "$WRAP" ] && RDC="$WRAP"
 export RDC ROOT
 XDG_CONFIG_HOME="$O/cfg" gamescope --backend headless -W 1280 -H 720 -w 1280 -h 720 -- \
-  sh -c 'cd "$ROOT" && exec $RDC ./out/build/linux-amd64-release/thebigs2 "$@"' sh "$@" \
+  sh -c 'cd "$ROOT" && exec $RDC ./out/build/linux-amd64-release/thebigs2 --user_data_root="$0" "$@"' "$O/data" "$@" \
   > "$O/gamescope.txt" 2>&1 &
 GS=$!
 export DISPLAY=:2 GAMESCOPE_WAYLAND_DISPLAY=gamescope-0
 key() { xdotool keydown "$1"; sleep 0.15; xdotool keyup "$1"; sleep "${2:-1.5}"; }
 shot() { gamescopectl screenshot "$O/$1.png" >/dev/null 2>&1; sleep 0.5; }
 sleep 45
-key Return 4; key Return 5; key space 6; key space 4      # title, save notice, Play Ball
+# title, save notice, "no profile found" (fresh save folder in <outdir>/data: No), Play Ball
+key Return 4; key Return 5; key space 6; key space 4; key space 4
 key d 1.5                                                 # controller -> home team
 key space 5; key space 4; key space 4; key space 4; key space 6; key space 10   # defaults
 sleep 15

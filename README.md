@@ -75,6 +75,7 @@ these fixes on a local branch (`fix/stability`, not in the upstream SDK):
 | 690bf1c | RenderDoc used only when already loaded | Where RenderDoc is installed (SteamOS), every run loads it: capture overhead and its overlay text in the corner |
 | aa272a5 | Multi-object waits block instead of spinning; thread names fit Linux's 15 chars | The audio thread spins ~77% of a core |
 | 0330f2e | Timer queue thread blocks between timers | ~10% of a core while idle |
+| 4d14346 | Frame pacing: frames presented on a fixed beat after the emulated vblank, precise vblank timer, achievement toast only registered while shown (adapted from SVR2011-Recomp's frame-pacing patch) | Uneven frame times: frames reach the screen whenever the GPU emulation finishes them |
 
 With an unpatched SDK the game still runs; use `resolution_scale = 1` and
 leave `fps_60` off.
@@ -301,7 +302,14 @@ don't distribute it.
 The game presents with plain FIFO (vsync) by default; the SDK's own default
 (mailbox/immediate) redraws the same frame 1000+ times a second and makes the
 60 Hz game hitch. For the smoothest result use a 60 Hz or 120 Hz display mode,
-or VRR/G-Sync. Override with e.g. `--vulkan_allow_present_mode_mailbox=true`.
+or VRR/G-Sync (on the Steam Deck OLED: 60 Hz, not 90). Override with e.g.
+`--vulkan_allow_present_mode_mailbox=true`.
+
+Each finished frame is presented 5 ms after the emulated vblank it belongs to
+(SDK `present_pace_to_guest_vblank`, `present_pacing_offset_us`), like the
+console's display flip, so frames reach the screen on a fixed beat even when
+the GPU emulation finishes them at varying times. `--present_pacing_stats=true`
+logs the presentation intervals every 5 s.
 
 ### 60 fps (experimental)
 

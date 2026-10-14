@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <mutex>
 #include <thread>
 #include <string>
@@ -43,8 +44,9 @@ Clock::time_point g_window_start{};
 uint64_t g_window_frames = 0;
 double g_window_max_ms = 0;
 double g_window_min_ms = 0;
-uint32_t g_window_long = 0;  // frames over 1.25x the window's target (20.8 ms at 60 fps)
-uint32_t g_window_short = 0; // frames under 0.5x (8.3 ms) - the catch-up after a long one
+double g_window_sum_ms = 0, g_window_sum_sq = 0;  // for the frame time spread
+uint32_t g_window_long = 0;   // frames over 1.25x the average frame time
+uint32_t g_window_short = 0;  // frames under 0.75x - the catch-up after a long one
 // Time inside the swap call: D3D blocks there until the GPU has finished the
 // previous frame (which itself waits for its vblank), so this is idle time.
 double g_window_swap_ms = 0;
@@ -116,8 +118,12 @@ void OnSwap() {
     g_ema_ms = g_ema_ms == 0 ? ms : g_ema_ms * 0.95 + ms * 0.05;
     g_window_max_ms = std::max(g_window_max_ms, ms);
     g_window_min_ms = g_window_frames == 0 ? ms : std::min(g_window_min_ms, ms);
-    g_window_long += ms > 20.8;
-    g_window_short += ms < 8.3;
+    g_window_sum_ms += ms;
+    g_window_sum_sq += ms * ms;
+    if (g_ema_ms > 0) {
+      g_window_long += ms > g_ema_ms * 1.25;
+      g_window_short += ms < g_ema_ms * 0.75;
+    }
     ++g_window_frames;
   } else {
     g_window_start = now;
@@ -128,11 +134,13 @@ void OnSwap() {
   if (interval <= 0) return;
   const double secs = std::chrono::duration<double>(now - g_window_start).count();
   if (secs >= interval && g_window_frames > 0) {
+    const double mean = g_window_sum_ms / g_window_frames;
+    const double stddev = std::sqrt(std::max(0.0, g_window_sum_sq / g_window_frames - mean * mean));
     REXLOG_INFO(
-        "[fps] {:.1f} fps over {:.1f}s (frame {:.1f}-{:.1f} ms, {} over 20.8 ms, {} under 8.3 ms, "
-        "{:.1f} ms of it in swap)",
-        g_window_frames / secs, secs, g_window_min_ms, g_window_max_ms, g_window_long,
-        g_window_short, g_window_swap_ms / g_window_frames);
+        "[fps] {:.1f} fps over {:.1f}s (frame {:.1f} +- {:.2f} ms, {:.1f}-{:.1f}, {} long (>1.25x avg), "
+        "{} short (<0.75x), {:.1f} ms of it in swap)",
+        g_window_frames / secs, secs, mean, stddev, g_window_min_ms, g_window_max_ms,
+        g_window_long, g_window_short, g_window_swap_ms / g_window_frames);
 #if defined(__linux__)
     REXLOG_INFO("[fps] {}", ThreadCpuReport(secs));
 #endif
@@ -142,6 +150,8 @@ void OnSwap() {
     g_window_swap_ms = 0;
     g_window_long = 0;
     g_window_short = 0;
+    g_window_sum_ms = 0;
+    g_window_sum_sq = 0;
   }
 }
 
