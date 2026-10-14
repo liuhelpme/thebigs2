@@ -20,7 +20,7 @@ No game data is included. You need your own dump of the disc.
 | `src/render_trace.cpp`, `src/renderdoc_capture.cpp` | Debug tooling: render-call trace build (F8), RenderDoc capture (F9) |
 | `docs/native-renderer.md` | Plan and findings for a native Vulkan renderer |
 | `tools/` | Analysis scripts (call graph, string refs, render-trace generator) |
-| `packaging/` | AppImage recipe (`build-appimage.sh`, desktop file, icon) |
+| `packaging/` | AppImage recipe (`build-appimage.sh`, desktop file, icon; `PROFILE=steamdeck` for the Deck) |
 | `game/` | **Your** extracted disc contents (`default.xex` + data). Git-ignored. |
 | `generated/` | Codegen output — regenerated, never edit by hand |
 
@@ -142,6 +142,7 @@ Settings live in **`thebigs2.toml`**:
 | `resolution_scale` | `2` | Internal render scale: `1` = 1x (720p), `2` = 2x (1440p), `3` = 3x (4K) |
 | `present_effect` | `"bilinear"` | `bilinear`, `cas`, `fsr` |
 | `render_target_path_vulkan` | `"fsi"` | `fsi` or `host` |
+| `anisotropic_override` | `3` | Texture filtering: `-1` = the game's own, `0` = off, `1`–`5` = forced 1x–16x |
 | `fps_60` | `false` | **Experimental.** 60 fps in matches instead of 30 — best with `resolution_scale = 1` (see below) |
 | `fps_log_interval` | `0` | Log the frame rate every N seconds (`0` = off) |
 | `bind_quit` | `"F10"` | Quit key |
@@ -213,7 +214,46 @@ writable, the AppImage falls back to those locations instead. The file picker
 uses xdg-desktop-portal or `zenity`; without either, set `iso_path` by hand.
 
 Needs glibc 2.38+ and a GCC 13+ libstdc++ (Ubuntu 24.04, Fedora 39, current
-Arch/SteamOS or newer) and a Vulkan driver. The AppImage contains code
+Arch/SteamOS or newer) and a Vulkan driver.
+
+### Steam Deck AppImage
+
+```bash
+PROFILE=steamdeck packaging/build-appimage.sh   # -> out/appimage/TheBigs2-SteamDeck-x86_64.AppImage
+```
+
+The same build with defaults for the Deck. Its launcher sets
+`TB2_PROFILE=steamdeck`, which changes the defaults and the settings file it
+writes on first launch:
+
+| Setting | Desktop | Steam Deck | Why |
+|---|---|---|---|
+| `resolution_scale` | `2` | `1` | The game's own 1280x720 fills the Deck's 1280x800 screen edge to edge (thin bars top and bottom), with no scaling; 2x would cost GPU time for no visible gain |
+| `render_target_path_vulkan` | `"fsi"` | `"host"` | The Deck's GPU driver (RADV) has no fragment shader interlock; host render targets are also the cheaper path and are correct at 1x |
+| `anisotropic_override` | `3` (4x) | `-1` (game's own) | Saves texture-sampling time on the Deck's GPU; this is what the Xbox 360 did |
+| `mnk_mode` | `true` | `false` | Steam Input can send key presses from the trackpads and back buttons, which would also drive player 1 |
+| `fps_60` | `false` | `false` | The Deck's GPU is far weaker than the desktop GPUs 60 fps was tested on; matches stay at the game's 30 |
+
+It doesn't copy settings from an older desktop install (only saves), so the
+Deck defaults stick. `TB2_PROFILE= ./TheBigs2-SteamDeck-x86_64.AppImage`
+runs it with the desktop defaults.
+
+On the Deck:
+
+1. In Desktop Mode, make a folder for it (e.g. `~/Games/TheBigs2`) and put the
+   AppImage and your `.iso` in it. With the `.iso` next to it, the first launch
+   extracts it without asking. The file picker may not show up in Game Mode,
+   so do the first launch in Desktop Mode, or keep the `.iso` in the folder.
+2. *Add a Non-Steam Game to My Library*, pick the AppImage, then switch to
+   Game Mode and play. The Deck's controls arrive as an Xbox pad.
+3. Quit with **Back + Start held 2 seconds** (the View and Menu buttons).
+4. On the Deck OLED (90 Hz), set the refresh rate to 60 Hz in the Quick
+   Access performance menu, otherwise motion judders.
+
+Not yet tested on a Deck: the defaults follow from the hardware, not from
+measurements. Use the F3 overlay or Steam's performance overlay to check the
+frame rate, and the `logs/` folder if something goes wrong. The first minutes
+can stutter while shaders compile (they're cached in `cache/` after that). The AppImage contains code
 recompiled from the game's executable, so treat it like the game itself and
 don't distribute it.
 

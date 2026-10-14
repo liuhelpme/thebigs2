@@ -100,6 +100,11 @@ present_effect = "bilinear"
 # interlock always use "host".
 render_target_path_vulkan = "fsi"
 
+# Texture filtering: -1 = the game's own (as on the Xbox 360), 0 = off,
+# 1-5 = force 1x/2x/4x/8x/16x anisotropic. Forcing it sharpens the field and
+# stands at a distance and costs some GPU time.
+anisotropic_override = 3
+
 # --- Experimental ------------------------------------------------------------
 # 60 fps in matches. The game caps matches at 30 fps (menus already run at
 # 60); true lifts that cap. Game speed stays correct - the game steps by real
@@ -211,12 +216,49 @@ fs::path ResolveConfigPath(const fs::path& exe_dir_default) {
   return PlatformConfigDir() / kConfigName;
 }
 
+bool SteamDeckProfile() {
+  static const bool deck = [] {
+    const char* profile = std::getenv("TB2_PROFILE");
+    return profile && std::strcmp(profile, "steamdeck") == 0;
+  }();
+  return deck;
+}
+
+namespace {
+
+constexpr const char* kSteamDeckHeader = R"TOML(# Steam Deck build. These defaults are tuned for the Deck: the game renders at
+# its own 1280x720 (resolution_scale = 1), which fills the 1280x800 screen edge
+# to edge with thin bars top and bottom; host render targets (the Deck's GPU
+# can't run "fsi"); the game's own texture filtering; and no keyboard
+# controls. Matches run at the game's 30 fps; fps_60 is experimental and the
+# Deck's GPU probably can't hold 60 in matches - try it, watch the F3 overlay
+# (or Steam's performance overlay) and turn it off if it stutters.
+#
+)TOML";
+
+// The template with the Steam Deck values (see kSteamDeckHeader).
+std::string ConfigTemplate() {
+  std::string text = kTemplate;
+  if (!SteamDeckProfile()) return text;
+  auto set = [&text](std::string_view from, std::string_view to) {
+    const size_t pos = text.find(std::string("\n") + std::string(from) + "\n");
+    if (pos != std::string::npos) text.replace(pos + 1, from.size(), to);
+  };
+  set("resolution_scale = 2", "resolution_scale = 1");
+  set("render_target_path_vulkan = \"fsi\"", "render_target_path_vulkan = \"host\"");
+  set("anisotropic_override = 3", "anisotropic_override = -1");
+  set("mnk_mode = true", "mnk_mode = false");
+  return kSteamDeckHeader + text;
+}
+
+}  // namespace
+
 void EnsureConfigFile(const fs::path& config_path) {
   std::error_code ec;
   if (fs::exists(config_path, ec)) return;
   fs::create_directories(config_path.parent_path(), ec);
   std::ofstream f(config_path, std::ios::binary);
-  if (f) f << kTemplate;
+  if (f) f << ConfigTemplate();
 }
 
 void SaveConfigString(const fs::path& config_path, std::string_view key, std::string_view value) {
@@ -321,7 +363,9 @@ void MigrateToPortable(const fs::path& old_user_data) {
     }
   }
   const fs::path config = root / "config" / kConfigName;
-  if (!fs::exists(config, ec) && fs::is_regular_file(old_config, ec)) {
+  // Not into a Steam Deck folder: a desktop install's settings (2x, fsi) would
+  // replace the Deck defaults. Saves are fine to carry over.
+  if (!SteamDeckProfile() && !fs::exists(config, ec) && fs::is_regular_file(old_config, ec)) {
     fs::create_directories(config.parent_path(), ec);
     fs::copy_file(old_config, config, ec);
     std::fprintf(stderr, "thebigs2: copied %s to %s%s\n", old_config.c_str(), config.c_str(),

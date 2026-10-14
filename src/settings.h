@@ -18,6 +18,11 @@ namespace tb2 {
 // on Windows.
 std::filesystem::path ResolveConfigPath(const std::filesystem::path& exe_dir_default);
 
+// Steam Deck build: the Deck AppImage sets TB2_PROFILE=steamdeck, which
+// switches the defaults (and the settings file written on first launch) to
+// 1x, host render targets, the game's own texture filtering and no keyboard.
+bool SteamDeckProfile();
+
 // Writes the commented template if the file does not exist yet.
 void EnsureConfigFile(const std::filesystem::path& config_path);
 
@@ -39,7 +44,8 @@ bool PortableMode();
 
 // First portable run in a folder: copies the saves (from `old_user_data`) and
 // the settings file (~/.config/thebigs2) of a non-portable install into the
-// portable folders, if those don't exist yet. The originals are kept.
+// portable folders, if those don't exist yet. The originals are kept. The
+// Steam Deck profile copies only the saves.
 void MigrateToPortable(const std::filesystem::path& old_user_data);
 
 // --- Disc image -----------------------------------------------------------

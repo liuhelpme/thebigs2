@@ -77,12 +77,24 @@ class Thebigs2App : public rex::ReXApp {
     if (!config.graphics && !config.gpu_plugin.empty()) {
       config.graphics = rex::system::LoadGpuPlugin(config.gpu_plugin);
     }
-    set_default("render_target_path_vulkan", "fsi");
-    set_default("resolution_scale", "2");
-
-    // The keyboard acts as player 1's controller (merged with the first pad,
-    // so both work at once). Bindings are the keybind_* settings.
-    set_default("mnk_mode", "true");
+    if (tb2::SteamDeckProfile()) {
+      // Steam Deck AppImage: RADV has no fragment shader interlock, so host
+      // render targets at 1x (the game's 1280x720 fills the 1280x800 screen's
+      // width 1:1). The game's own texture filtering instead of the forced 4x
+      // anisotropic, and no keyboard: Steam Input can send keys from the
+      // trackpads/back buttons, which would also drive player 1.
+      set_default("render_target_path_vulkan", "host");
+      set_default("resolution_scale", "1");
+      set_default("anisotropic_override", "-1");
+      set_default("mnk_mode", "false");
+      REXLOG_INFO("Steam Deck profile (TB2_PROFILE=steamdeck)");
+    } else {
+      set_default("render_target_path_vulkan", "fsi");
+      set_default("resolution_scale", "2");
+      // The keyboard acts as player 1's controller (merged with the first
+      // pad, so both work at once). Bindings are the keybind_* settings.
+      set_default("mnk_mode", "true");
+    }
   }
 
   // Clean quit without Alt+F4. Both routes close the window, which runs the
