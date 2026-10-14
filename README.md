@@ -14,7 +14,10 @@ No game data is included. You need your own dump of the disc.
 | `config/codegen.toml` | Register/codegen flags and analysis tuning |
 | `config/overrides.toml` | Hand-written function bounds, jump tables, hooks, CRT map |
 | `src/thebigs2_app.h` | `ReXApp` subclass — runtime hooks go here |
+| `src/hooks.cpp` | Game-specific runtime fixes (ad server, `XeCryptMd5*`, save listing) |
 | `src/settings.cpp` | Settings file template, display mode, disc-image (.iso) support |
+| `src/frame_stats.cpp` | Frame-rate counter (F3 overlay, log) and the experimental `fps_60` unlock |
+| `src/render_trace.cpp`, `src/renderdoc_capture.cpp` | Debug tooling: render-call trace build (F8), RenderDoc capture (F9) |
 | `docs/native-renderer.md` | Plan and findings for a native Vulkan renderer |
 | `tools/` | Analysis scripts (call graph, string refs, render-trace generator) |
 | `packaging/` | AppImage recipe (`build-appimage.sh`, desktop file, icon) |
@@ -54,6 +57,20 @@ cmake --build out/build/win-amd64 --config Release --target install
 
 Install registers the SDK with CMake, so this project finds it automatically.
 To use a source checkout instead, configure with `-DREXSDK_DIR=/path/to/rexglue-sdk`.
+
+**SDK fixes.** This project is tested against `development` @ bd833a2 plus
+five fixes on a local branch (`fix/stability`, not in the upstream SDK):
+
+| Commit | Fix | Without it |
+|---|---|---|
+| 43f34f9 | Unlink the guest-memory shm object right after creating it | Every crash/kill leaves a multi-GB file in `/dev/shm`; once it fills, the next launch dies (SIGBUS) |
+| 5783f3d | Lock the InputSystem entry points | Heap corruption and an abort when a controller disconnects and reconnects |
+| b4bf254 | Request vertex buffer ranges on every draw | Stale geometry when the game rewrites a vertex buffer in place |
+| a52de02 | Sample cube maps with an LOD from the gradients | NVIDIA GPU hang at 2x (see *Rendering defaults*) |
+| dfd3581 | Bulk type-0 register writes in the command processor | `fps_60` can't get past ~30 fps |
+
+With an unpatched SDK the game still runs; use `resolution_scale = 1` and
+leave `fps_60` off.
 
 ## 2. Put your game files in `game/`
 
@@ -151,9 +168,12 @@ settings file lists every accepted key name.
 | Right stick (click) | arrow keys (K) | `keybind_rstick_up/down/left/right/press` |
 | D-pad | Shift + arrow keys | `keybind_dpad_up/down/left/right` |
 
-Holding Back + Start for 2 seconds quits from the keyboard too. Settings files
-written before this feature have no keyboard section; the defaults above still
-apply, and you can copy the `keybind_*` lines in to change them.
+Holding Back + Start for 2 seconds quits from the keyboard too.
+
+Settings files are only written on first launch, so one from an older build
+lacks newer settings (the keyboard section, `fps_60`). Their defaults still
+apply; add the lines by hand to change them, or delete the file to get a fresh
+one with every setting and its comments.
 
 Notes: the game's own (guest) video mode stays 1280x720 @ 60 Hz no matter what
 the display is set to — `display_resolution` deliberately doesn't use the SDK's
@@ -212,6 +232,8 @@ don't distribute it.
   cleanly (was an endless fault loop on the ad thread), real `XeCryptMd5*`
   (SDK stubs), and an empty save listing treated as success (was
   "Unable To Connect To Device"). Boots, plays, saves and loads on Linux.
+- Frame rate: 60 fps in menus, 30 in matches (the game's own cap); 60 in
+  matches with the experimental `fps_60` at 1x (see below).
 - Windows: same sources and presets; not built yet.
 
 ### Frame pacing
@@ -247,14 +269,23 @@ On NVIDIA, the SDK's `development` branch (bd833a2) hangs the GPU at 2x within
 a few minutes (kernel log: `Xid 109 ... CTX SWITCH TIMEOUT`). The player
 shaders sample a cube map with explicit gradients after a per-pixel branch,
 which the driver doesn't survive. The fix (cube maps sampled with an LOD
-computed from the gradients, setting `spirv_cube_lod_from_gradients`) is not
-upstream yet; until it is, use `--resolution_scale=1` with an unpatched SDK.
+computed from the gradients, setting `spirv_cube_lod_from_gradients`) is
+SDK commit a52de02 (see *SDK fixes* in section 1); with an unpatched SDK use
+`--resolution_scale=1`.
 
-### Quitting
+### Quitting and hotkeys
 
 Press **F10**, or hold **Back + Start** on a controller for 2 seconds. Both
 close the window through the normal shutdown. F10 can be rebound with the
 `bind_quit` setting (e.g. `--bind_quit=Escape`).
+
+| Key | Does |
+|---|---|
+| F10 | Quit (`bind_quit`) |
+| F3 | SDK debug overlay, including the game's frame rate |
+| F4 / F7 / Backtick | SDK settings, achievements and console overlays |
+| F9 | Capture frames in RenderDoc (only when launched from RenderDoc) |
+| F8 | Record a render trace (trace build only, `-DTB2_RENDER_TRACE=ON`) |
 
 ## 6. The iteration loop
 

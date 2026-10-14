@@ -124,7 +124,7 @@ mnk_mode = true
 # Up, Down, Left, Right, Semicolon, Quote, Comma, Period, Slash, Backslash,
 # Minus, Plus, LBracket, RBracket, Backtick, Numpad0-Numpad9, NumpadPlus,
 # NumpadMinus, NumpadStar, NumpadSlash, NumpadEnter, CapsLock, LMB, RMB, MMB.
-# Don't reuse the hotkeys F8, F9, F10.
+# Don't reuse the hotkeys F3, F4, F7, F8, F9, F10 or Backtick.
 keybind_a = "Semicolon,Space"
 keybind_b = "Quote,Backspace"
 keybind_x = "L"
