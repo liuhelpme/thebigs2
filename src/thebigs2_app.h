@@ -24,6 +24,7 @@
 
 #include <SDL3/SDL.h>
 
+#include "first_launch.h"
 #include "frame_stats.h"
 #include "settings.h"
 #if defined(TB2_RENDER_TRACE)
@@ -201,10 +202,14 @@ class Thebigs2App : public rex::ReXApp {
     }
   }
 
+  // The setup screen's fonts (Roboto at a few sizes; first_launch.cpp).
+  void OnConfigureFonts(ImFontAtlas* atlas) override { tb2::AddFirstLaunchFonts(atlas); }
+
   // No game folder: extract the disc image once, into game/ next to a portable
   // AppImage or else the user data folder (~/.local/share/thebigs2/game), then
-  // run from there. The image comes from iso_path in the settings file, else a matching
-  // .iso next to the executable/AppImage, else a file picker.
+  // run from there. The setup screen (first_launch.cpp) picks the image,
+  // preselecting iso_path from the settings file or a matching .iso next to
+  // the executable/AppImage.
   std::optional<rex::PathConfig> OnFinalizePaths(
       const rex::PathConfig& defaults,
       std::function<void(rex::PathConfig)> resume) override {
@@ -218,28 +223,43 @@ class Thebigs2App : public rex::ReXApp {
     pending_paths_ = defaults;
     resume_ = std::move(resume);
 
-    std::filesystem::path iso = tb2::IsoPathSetting();
-    if (iso.empty()) iso = tb2::FindIsoNearLauncher();
-    if (!iso.empty()) {
+    tb2::FirstLaunchSetup setup;
+    setup.dest = extracted_dir();
+    setup.start_dir = tb2::LauncherFolder();
+    if (const std::filesystem::path iso = tb2::IsoPathSetting(); !iso.empty()) {
       std::string error;
       if (tb2::CheckIso(iso, error)) {
-        StartExtract(iso);
-        return std::nullopt;
+        setup.suggested_iso = iso;
+      } else {
+        REXLOG_ERROR("{}", error);
+        setup.message = "iso_path in the settings file: " + error;
       }
-      REXLOG_ERROR("{}", error);
-      rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, error);
     }
+    if (setup.suggested_iso.empty()) setup.suggested_iso = tb2::FindIsoNearLauncher();
+    setup.extract = [this](const std::filesystem::path& iso) { StartExtract(iso); };
+    setup.cancel = [this] { user_cancel_.store(true); };
+    setup.quit = [this] {
+      REXLOG_INFO("Quit from the setup screen");
+      app_context().QuitFromUIThread();
+    };
 
-    rex::ShowSimpleMessageBox(
-        rex::SimpleMessageBoxType::Warning,
-        "Choose your The Bigs 2 disc image (.iso).\n\nThe game files are extracted once to\n" +
-            extracted_dir().string() + "\nThe .iso is not needed afterwards.");
-    PickIso();
+    if (!imgui_drawer()) {  // no presenter to draw the screen with
+      if (setup.suggested_iso.empty()) {
+        rex::ShowSimpleMessageBox(
+            rex::SimpleMessageBoxType::Error,
+            "No game files. Set iso_path in\n" + tb2_config_path_.string() +
+                "\nor start with --iso_path=/path/to/TheBigs2.iso");
+        return defaults;
+      }
+      StartExtract(setup.suggested_iso);
+      return std::nullopt;
+    }
+    tb2::ShowFirstLaunch(imgui_drawer(), std::move(setup), &extract_status_);
     return std::nullopt;
   }
 
   ~Thebigs2App() override {
-    cancel_extract_.store(true);
+    shutting_down_.store(true);
     if (extract_thread_.joinable()) extract_thread_.join();
   }
 
@@ -248,99 +268,43 @@ class Thebigs2App : public rex::ReXApp {
     return tb2::PortableMode() ? tb2::LauncherFolder() / "game" : tb2_user_data_root_ / "game";
   }
 
-  static SDL_Window* MainWindow() {
-    int n = 0;
-    SDL_Window** w = SDL_GetWindows(&n);
-    SDL_Window* out = (w && n > 0) ? w[0] : nullptr;
-    SDL_free(w);
-    return out;
-  }
-
-  // Async file picker (xdg-desktop-portal / zenity on Linux, the system dialog
-  // on Windows). The game window is hidden meanwhile so a fullscreen window
-  // cannot cover the dialog.
-  void PickIso() {
-    if (SDL_Window* w = MainWindow()) SDL_HideWindow(w);
-    static const SDL_DialogFileFilter kFilters[] = {
-        {"Xbox 360 disc image", "iso;xiso"},
-        {"All files", "*"},
-    };
-    const std::string start = tb2::LauncherFolder().string() + "/";
-    SDL_ShowOpenFileDialog(
-        [](void* self, const char* const* files, int) {
-          auto* app = static_cast<Thebigs2App*>(self);
-          std::string picked;
-          bool failed = !files;
-          if (files && files[0]) picked = files[0];
-          if (failed) REXLOG_ERROR("File dialog failed: {}", SDL_GetError());
-          app->app_context().CallInUIThreadDeferred(
-              [app, picked, failed] { app->OnIsoPicked(picked, failed); });
-        },
-        this, MainWindow(), kFilters, 2, start.c_str(), false);
-  }
-
-  void OnIsoPicked(const std::string& picked, bool failed) {
-    if (picked.empty()) {
-      if (failed) {
-        rex::ShowSimpleMessageBox(
-            rex::SimpleMessageBoxType::Error,
-            "Could not open a file picker. Set iso_path in\n" + tb2_config_path_.string() +
-                "\nor start with --iso_path=/path/to/TheBigs2.iso");
-      }
-      app_context().QuitFromUIThread();
-      return;
-    }
-    std::string error;
-    if (!tb2::CheckIso(picked, error)) {
-      REXLOG_ERROR("{}", error);
-      rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, error);
-      PickIso();
-      return;
-    }
-    tb2::SetIsoPathSetting(picked);
-    tb2::SaveConfigString(tb2_config_path_, "iso_path", picked);
-    StartExtract(picked);
-  }
-
-  // Extraction runs on a worker thread; the window drops out of fullscreen and
-  // shows the progress in its title until it is done.
+  // Extraction runs on a worker thread; the setup screen shows its progress.
   void StartExtract(const std::filesystem::path& iso) {
-    if (SDL_Window* w = MainWindow()) SDL_ShowWindow(w);
-    restore_fullscreen_ = window() && window()->IsFullscreen();
-    if (restore_fullscreen_) window()->SetFullscreen(false);
-    if (window()) {
-      saved_title_ = window()->GetTitle();
-      window()->SetTitle("The Bigs 2 - extracting game files...");
-    }
+    if (extract_status_.running.load()) return;
+    if (extract_thread_.joinable()) extract_thread_.join();
+    tb2::SetIsoPathSetting(iso.string());
+    tb2::SaveConfigString(tb2_config_path_, "iso_path", iso.string());
+    user_cancel_.store(false);
+    extract_status_.percent.store(0);
+    extract_status_.running.store(true);
 
     extract_thread_ = std::thread([this, iso] {
       std::string error;
       bool ok = tb2::ExtractIso(iso, extracted_dir(), [this](int pct) {
-        if (cancel_extract_.load()) return false;
-        app_context().CallInUIThreadDeferred([this, pct] {
-          if (window())
-            window()->SetTitle("The Bigs 2 - extracting game files " + std::to_string(pct) + "%");
-        });
-        return true;
+        extract_status_.percent.store(pct);
+        return !user_cancel_.load() && !shutting_down_.load();
       }, error);
-      if (cancel_extract_.load()) return;
+      if (shutting_down_.load()) return;
+      if (user_cancel_.load()) error = "Extraction cancelled.";
       app_context().CallInUIThreadDeferred([this, ok, error] { OnExtractDone(ok, error); });
     });
   }
 
   void OnExtractDone(bool ok, const std::string& error) {
     if (extract_thread_.joinable()) extract_thread_.join();
+    {
+      std::lock_guard lock(extract_status_.mutex);
+      extract_status_.error = ok || user_cancel_.load() ? (ok ? "" : error)
+                                                         : "Extracting the disc image failed: " + error;
+    }
     if (!ok) {
-      REXLOG_ERROR("{}", error);
-      rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error,
-                                "Extracting the disc image failed:\n\n" + error);
-      app_context().QuitFromUIThread();
+      REXLOG_ERROR("Extraction failed: {}", error);
+      extract_status_.running.store(false);
+      if (!imgui_drawer()) app_context().QuitFromUIThread();
       return;
     }
-    if (window()) {
-      window()->SetTitle(saved_title_);
-      if (restore_fullscreen_) window()->SetFullscreen(true);
-    }
+    tb2::CloseFirstLaunch();
+    extract_status_.running.store(false);
     rex::PathConfig paths = pending_paths_;
     paths.game_data_root = extracted_dir();
     auto resume = std::move(resume_);
@@ -352,9 +316,9 @@ class Thebigs2App : public rex::ReXApp {
   rex::PathConfig pending_paths_;
   std::function<void(rex::PathConfig)> resume_;
   std::thread extract_thread_;
-  std::atomic<bool> cancel_extract_{false};
-  bool restore_fullscreen_ = false;
-  std::string saved_title_;
+  tb2::ExtractStatus extract_status_;
+  std::atomic<bool> user_cancel_{false};
+  std::atomic<bool> shutting_down_{false};
 
   // Safe from any thread: the close itself always runs on the UI thread.
   void RequestQuit(const char* source) {

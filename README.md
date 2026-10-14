@@ -16,10 +16,12 @@ No game data is included. You need your own dump of the disc.
 | `src/thebigs2_app.h` | `ReXApp` subclass — runtime hooks go here |
 | `src/hooks.cpp` | Game-specific runtime fixes (ad server, `XeCryptMd5*`, save listing) |
 | `src/settings.cpp` | Settings file template, display mode, disc-image (.iso) support |
+| `src/first_launch.cpp` | First-launch setup screen (ImGui): pick the disc image, extract it |
+| `assets/fonts/` | Roboto (Apache 2.0), embedded for the setup screen |
 | `src/frame_stats.cpp` | Frame-rate counter (F3 overlay, log) and the experimental `fps_60` unlock |
 | `src/render_trace.cpp`, `src/renderdoc_capture.cpp` | Debug tooling: render-call trace build (F8), RenderDoc capture (F9) |
 | `docs/native-renderer.md` | Plan and findings for a native Vulkan renderer |
-| `tools/` | Analysis scripts (call graph, string refs, render-trace generator) |
+| `tools/` | Analysis scripts (call graph, string refs, render-trace generator), `atbat.sh` (scripted gameplay frame for rendering checks) |
 | `packaging/` | AppImage recipe (`build-appimage.sh`, desktop file, icon; `PROFILE=steamdeck` for the Deck) |
 | `game/` | **Your** extracted disc contents (`default.xex` + data). Git-ignored. |
 | `generated/` | Codegen output — regenerated, never edit by hand |
@@ -59,7 +61,7 @@ Install registers the SDK with CMake, so this project finds it automatically.
 To use a source checkout instead, configure with `-DREXSDK_DIR=/path/to/rexglue-sdk`.
 
 **SDK fixes.** This project is tested against `development` @ bd833a2 plus
-five fixes on a local branch (`fix/stability`, not in the upstream SDK):
+these fixes on a local branch (`fix/stability`, not in the upstream SDK):
 
 | Commit | Fix | Without it |
 |---|---|---|
@@ -68,6 +70,8 @@ five fixes on a local branch (`fix/stability`, not in the upstream SDK):
 | b4bf254 | Request vertex buffer ranges on every draw | Stale geometry when the game rewrites a vertex buffer in place |
 | a52de02 | Sample cube maps with an LOD from the gradients | NVIDIA GPU hang at 2x (see *Rendering defaults*) |
 | dfd3581 | Bulk type-0 register writes in the command processor | `fps_60` can't get past ~30 fps |
+| a4b505d | Libraries pinned to older glibc symbol versions | Built on a glibc 2.43 system, nothing loads on SteamOS |
+| ad05653 | 4xMSAA depth resolve reads each 8-sample half at its own address | At 1x, dashed streaks on and around players (depth-of-field fed garbage depth every 8 rows) |
 
 With an unpatched SDK the game still runs; use `resolution_scale = 1` and
 leave `fps_60` off.
@@ -110,9 +114,17 @@ re-runs only when the XEX or a config file changes.
    AppImage), or in the working directory.
 3. A previous extraction in the user data folder
    (`~/.local/share/thebigs2/game`; for the AppImage, `game/` next to it).
-4. Otherwise a disc image is extracted there once: `iso_path` from the
+4. Otherwise the **setup screen** opens in the game window and the disc image
+   you choose is extracted there once. It preselects `iso_path` from the
    settings file (or `--iso_path=...`), else a matching `.iso` next to the
-   executable / AppImage, else a file picker asks for it.
+   executable / AppImage.
+
+The setup screen is a small file browser (shortcuts for the game's folder,
+Home, Downloads and mounted SD cards / USB drives) that checks the chosen
+image right away, then shows the extraction progress, with Cancel. It works
+with mouse, touchscreen, keyboard (arrows, Enter, Backspace = up a folder)
+and controller (D-pad / stick, A, B = up a folder), fullscreen and in Steam
+Deck Game Mode.
 
 Full disc dumps (Redump-style, with the video partition) and XISOs both work.
 The image is only accepted if its `default.xex` is byte-identical to the one
@@ -193,8 +205,8 @@ packaging/build-appimage.sh      # -> out/appimage/TheBigs2-x86_64.AppImage
 
 It bundles the executable, `librexruntime.so`, `libTracyClient.so` and the
 Xenos GPU plugin (~13 MB) — **no game data**. Put it in its own folder, run it,
-and pick your `.iso` on first launch (or put the `.iso` in the same folder); the
-window shows extraction progress in its title, then the game starts.
+and pick your `.iso` on the setup screen (an `.iso` in the same folder is
+preselected); after the extraction the game starts.
 
 The AppImage is **portable**: everything it writes stays next to it.
 
@@ -210,10 +222,11 @@ logs/
 Move or back up the folder as a whole. On the first run in a new folder, saves
 and settings from an older non-portable install (`~/.local/share/thebigs2`,
 `~/.config/thebigs2`) are copied in; the originals stay. If the folder isn't
-writable, the AppImage falls back to those locations instead. The file picker
-uses xdg-desktop-portal or `zenity`; without either, set `iso_path` by hand.
+writable, the AppImage falls back to those locations instead.
 
-Needs glibc 2.38+ and a GCC 13+ libstdc++ (Ubuntu 24.04, Fedora 39, current
+Needs glibc 2.38+ (the build script refuses binaries that need more: a
+newer build machine pulls in new symbol versions, which `src/glibc_compat.h`
+pins back) and a GCC 13+ libstdc++ (Ubuntu 24.04, Fedora 39, current
 Arch/SteamOS or newer) and a Vulkan driver.
 
 ### Steam Deck AppImage
@@ -241,14 +254,18 @@ runs it with the desktop defaults.
 On the Deck:
 
 1. In Desktop Mode, make a folder for it (e.g. `~/Games/TheBigs2`) and put the
-   AppImage and your `.iso` in it. With the `.iso` next to it, the first launch
-   extracts it without asking. The file picker may not show up in Game Mode,
-   so do the first launch in Desktop Mode, or keep the `.iso` in the folder.
+   AppImage in it, ideally with your `.iso` next to it (then it's preselected
+   on the setup screen; press A). The setup screen also works in Game Mode,
+   with the controls or the touchscreen, and can browse to an SD card.
 2. *Add a Non-Steam Game to My Library*, pick the AppImage, then switch to
    Game Mode and play. The Deck's controls arrive as an Xbox pad.
 3. Quit with **Back + Start held 2 seconds** (the View and Menu buttons).
 4. On the Deck OLED (90 Hz), set the refresh rate to 60 Hz in the Quick
    Access performance menu, otherwise motion judders.
+
+If it closes right away, run it from Konsole in Desktop Mode
+(`cd ~/Games/TheBigs2 && ./TheBigs2-SteamDeck-x86_64.AppImage`): errors from
+before the game's log starts (e.g. a missing library) only show there.
 
 Not yet tested on a Deck: the defaults follow from the hardware, not from
 measurements. Use the F3 overlay or Steam's performance overlay to check the

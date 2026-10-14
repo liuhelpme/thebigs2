@@ -40,6 +40,20 @@ if [ "${STRIP:-1}" = 1 ] && command -v strip >/dev/null; then
   strip --strip-unneeded "$APPDIR/usr/bin/thebigs2" "$APPDIR"/usr/bin/*.so
 fi
 
+# Refuse binaries that need a newer glibc than the README promises (2.38:
+# Ubuntu 24.04, SteamOS 3.8 has 2.41). A newer build machine adds new symbol
+# versions (glibc 2.43: sqrtf & co.), pinned back by src/glibc_compat.h in
+# both this project and the SDK.
+MAX_GLIBC="${MAX_GLIBC:-2.38}"
+for f in "$APPDIR"/usr/bin/thebigs2 "$APPDIR"/usr/bin/*.so; do
+  need=$(objdump -T "$f" | grep -o 'GLIBC_2\.[0-9]*' | sed 's/GLIBC_//' | sort -uV | tail -1)
+  if [ -n "$need" ] && [ "$(printf '%s\n%s\n' "$need" "$MAX_GLIBC" | sort -V | tail -1)" != "$MAX_GLIBC" ]; then
+    echo "$(basename "$f") needs glibc $need (> $MAX_GLIBC); it won't start on older systems such as SteamOS:" >&2
+    objdump -T "$f" | grep "GLIBC_$need" | awk '{print "  " $NF}' >&2
+    exit 1
+  fi
+done
+
 if [ -n "$PROFILE" ]; then
   # Default only: TB2_PROFILE= (empty) in the environment turns it off again.
   sed "s|^exec |export TB2_PROFILE=\"\${TB2_PROFILE-$PROFILE}\"\nexec |" \

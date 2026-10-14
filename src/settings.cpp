@@ -28,8 +28,8 @@
 #endif
 
 REXCVAR_DEFINE_STRING(iso_path, "", "The Bigs 2",
-                      "Disc image (.iso) to extract the game from on first launch. Empty: "
-                      "ask with a file picker");
+                      "Disc image (.iso) to extract the game from on first launch; "
+                      "preselected on the setup screen");
 REXCVAR_DEFINE_STRING(display_resolution, "desktop", "The Bigs 2",
                       "Output resolution: 'desktop' or WIDTHxHEIGHT (e.g. 1920x1080). Window "
                       "size when windowed, display mode in exclusive fullscreen");
@@ -52,8 +52,8 @@ constexpr const char* kTemplate = R"TOML(# The Bigs 2 - settings
 # --- Game disc ---------------------------------------------------------------
 # Your disc image: a full disc dump (.iso) or an XISO. On first launch its
 # files are extracted to the game folder next to the AppImage (or to
-# ~/.local/share/thebigs2/game); after that the .iso isn't needed. Leave empty to be asked; the file you pick
-# is saved here.
+# ~/.local/share/thebigs2/game); after that the .iso isn't needed. The setup
+# screen on first launch preselects this; the image you pick there is saved here.
 iso_path = ""
 
 # --- Display -----------------------------------------------------------------

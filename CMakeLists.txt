@@ -17,6 +17,7 @@ set(THEBIGS2_SOURCES
     src/renderdoc_capture.cpp
     src/settings.cpp
     src/frame_stats.cpp
+    src/first_launch.cpp
 )
 
 if(WIN32)
@@ -69,6 +70,17 @@ endif()
 
 # GPU emulation is opt-in on the development branch; ship the Xenos plugin.
 rexglue_setup_target(thebigs2 GPU_PLUGINS xenos)
+
+# Keep the executable loadable on glibc older than the build machine's, e.g.
+# SteamOS (see src/glibc_compat.h), including the recompiled sources.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+    foreach(_t thebigs2 thebigs2_recomp)
+        if(TARGET ${_t})
+            target_compile_options(${_t} PRIVATE
+                "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/glibc_compat.h")
+        endif()
+    endforeach()
+endif()
 
 # The SDK sets a $ORIGIN rpath on Linux but (unlike Windows/macOS) never stages
 # librexruntime.so / libTracyClient.so next to the binary, so it won't start.
