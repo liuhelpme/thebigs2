@@ -204,11 +204,12 @@ extern "C" REX_FUNC(sub_823B3310) {
 // threshold (low byte). In matches the game asks for interval 2 (30 fps);
 // menus already use 1. The game simulation steps by measured real time (the
 // update in sub_8222DF10 gets the timer delta), so 60 fps doesn't speed it up.
-// Experimental and off by default: at resolution_scale=2 the FSI render path
-// is GPU-bound at ~40-50 fps (RTX 4060), which paces worse than a steady 30.
-REXCVAR_DEFINE_BOOL(fps_60, false, "The Bigs 2",
-                    "Experimental: run matches at 60 fps instead of the game's "
-                    "30 fps cap; best with resolution_scale=1");
+// 60 is experimental: holds 60 at 1x on a desktop and in Steam Deck gameplay
+// (slower in transitions); at 2x the FSI path is GPU-bound at ~53 fps.
+REXCVAR_DEFINE_INT32(frame_rate, 30, "The Bigs 2",
+                     "Frame rate in matches: 30 (the game's own cap) or 60 (experimental)");
+// Older name, still honoured (true = frame_rate 60).
+REXCVAR_DEFINE_BOOL(fps_60, false, "The Bigs 2", "Old name for frame_rate = 60");
 
 #if !defined(TB2_RENDER_TRACE)  // the trace build wraps every D3D function itself
 extern "C" REX_FUNC(__imp__sub_823B9CB8);
@@ -219,7 +220,7 @@ extern "C" REX_FUNC(sub_823B9CB8) {
   if (last_interval.exchange(interval, std::memory_order_relaxed) != interval) {
     REXLOG_INFO("[fps] game present interval {} (arg {:08X})", interval, arg);
   }
-  if (interval > 1 && REXCVAR_GET(fps_60)) {
+  if (interval > 1 && (REXCVAR_GET(frame_rate) >= 60 || REXCVAR_GET(fps_60))) {
     ctx.r3.u64 = (arg & ~0xF00u) | (1u << 8);
   }
   [[clang::musttail]] return __imp__sub_823B9CB8(ctx, base);

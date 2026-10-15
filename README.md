@@ -18,7 +18,7 @@ No game data is included. You need your own dump of the disc.
 | `src/settings.cpp` | Settings file template, display mode, disc-image (.iso) support |
 | `src/first_launch.cpp` | First-launch setup screen (ImGui): pick the disc image, extract it |
 | `assets/fonts/` | Roboto (Apache 2.0), embedded for the setup screen |
-| `src/frame_stats.cpp` | Frame-rate counter (F3 overlay, log) and the experimental `fps_60` unlock |
+| `src/frame_stats.cpp` | Frame-rate counter (F3 overlay, log) and the experimental 60 fps unlock (`frame_rate`) |
 | `src/render_trace.cpp`, `src/renderdoc_capture.cpp` | Debug tooling: render-call trace build (F8), RenderDoc capture (F9) |
 | `docs/native-renderer.md` | Plan and findings for a native Vulkan renderer |
 | `tools/` | Analysis scripts (call graph, string refs, render-trace generator), `atbat.sh` (scripted gameplay frame for rendering checks) |
@@ -69,7 +69,7 @@ these fixes on a local branch (`fix/stability`, not in the upstream SDK):
 | 5783f3d | Lock the InputSystem entry points | Heap corruption and an abort when a controller disconnects and reconnects |
 | b4bf254 | Request vertex buffer ranges on every draw | Stale geometry when the game rewrites a vertex buffer in place |
 | a52de02 | Sample cube maps with an LOD from the gradients | NVIDIA GPU hang at 2x (see *Rendering defaults*) |
-| dfd3581 | Bulk type-0 register writes in the command processor | `fps_60` can't get past ~30 fps |
+| dfd3581 | Bulk type-0 register writes in the command processor | `frame_rate = 60` can't get past ~30 fps |
 | a4b505d | Libraries pinned to older glibc symbol versions | Built on a glibc 2.43 system, nothing loads on SteamOS |
 | ad05653 | 4xMSAA depth resolve reads each 8-sample half at its own address | At 1x, dashed streaks on and around players (depth-of-field fed garbage depth every 8 rows) |
 | 690bf1c | RenderDoc used only when already loaded | Where RenderDoc is installed (SteamOS), every run loads it: capture overhead and its overlay text in the corner |
@@ -81,7 +81,7 @@ these fixes on a local branch (`fix/stability`, not in the upstream SDK):
 | e806d48 | Cheaper per-draw constants and cvar check; `cp_frame_stats` | ~10% more GPU thread time per frame |
 
 With an unpatched SDK the game still runs; use `resolution_scale = 1` and
-leave `fps_60` off.
+leave `frame_rate` at 30.
 
 ## 2. Put your game files in `game/`
 
@@ -162,7 +162,7 @@ Settings live in **`thebigs2.toml`**:
 | `present_effect` | `"bilinear"` | `bilinear`, `cas`, `fsr` |
 | `render_target_path_vulkan` | `"fsi"` | `fsi` or `host` |
 | `anisotropic_override` | `3` | Texture filtering: `-1` = the game's own, `0` = off, `1`–`5` = forced 1x–16x |
-| `fps_60` | `false` | **Experimental.** 60 fps in matches instead of 30 — best with `resolution_scale = 1` (see below) |
+| `frame_rate` | `30` | Frame rate in matches: `30` (the game's own) or `60` — **60 is experimental** (see below). Replaces `fps_60`, which still works |
 | `scene_msaa` | automatic | The game's 4x MSAA on the main scene; automatic = on at 1x, off at 2x+ and on the Steam Deck (see below) |
 | `fps_log_interval` | `0` | Log the frame rate every N seconds (`0` = off) |
 | `bind_quit` | `"F10"` | Quit key |
@@ -192,9 +192,11 @@ settings file lists every accepted key name.
 Holding Back + Start for 2 seconds quits from the keyboard too.
 
 Settings files are only written on first launch, so one from an older build
-lacks newer settings (the keyboard section, `fps_60`). Their defaults still
-apply; add the lines by hand to change them, or delete the file to get a fresh
-one with every setting and its comments.
+lacks newer settings. The frame rate section is added to such files
+automatically on the next launch (an old `fps_60 = true` becomes
+`frame_rate = 60`); for other new settings the defaults apply, and you can add
+the lines by hand or delete the file to get a fresh one with every setting and
+its comments.
 
 Notes: the game's own (guest) video mode stays 1280x720 @ 60 Hz no matter what
 the display is set to — `display_resolution` deliberately doesn't use the SDK's
@@ -253,7 +255,7 @@ writes on first launch:
 | `render_target_path_vulkan` | `"fsi"` | `"host"` | The Deck's GPU driver (RADV) has no fragment shader interlock; host render targets are also the cheaper path and are correct at 1x |
 | `anisotropic_override` | `3` (4x) | `-1` (game's own) | Saves texture-sampling time on the Deck's GPU; this is what the Xbox 360 did |
 | `mnk_mode` | `true` | `false` | Steam Input can send key presses from the trackpads and back buttons, which would also drive player 1 |
-| `fps_60` | `false` | `false` | The Deck's GPU is far weaker than the desktop GPUs 60 fps was tested on; matches stay at the game's 30 |
+| `frame_rate` | `30` | `30` | 60 is experimental; on the Deck it holds 60 in gameplay and slows down during transitions |
 | `scene_msaa` | off at 2x (on at 1x) | off | Without the game's 4x MSAA it also skips its 3-tile rendering: about half the CPU work of the GPU emulation and less GPU work |
 
 It doesn't copy settings from an older desktop install (only saves), so the
@@ -299,7 +301,7 @@ don't distribute it.
   (SDK stubs), and an empty save listing treated as success (was
   "Unable To Connect To Device"). Boots, plays, saves and loads on Linux.
 - Frame rate: 60 fps in menus, 30 in matches (the game's own cap); 60 in
-  matches with the experimental `fps_60` at 1x (see below).
+  matches with the experimental `frame_rate = 60` (see below).
 - Windows: same sources and presets; not built yet.
 
 ### Frame pacing
@@ -319,7 +321,9 @@ logs the presentation intervals every 5 s.
 ### 60 fps (experimental)
 
 The game runs menus at 60 fps but caps matches at 30 (it asks for a flip every
-second vblank). `fps_60 = true` lifts that cap. Gameplay speed is unaffected:
+second vblank). `frame_rate = 60` lifts that cap. **This is experimental.**
+On a Steam Deck it holds 60 in gameplay and slows down during transitions
+(camera changes, replays). Gameplay speed is unaffected:
 the game steps its simulation by measured real time. **Use it with
 `resolution_scale = 1`**: at 1x a Ryzen 5600 + RTX 4060 holds 60 throughout a
 match, while at 2x the FSI render path is GPU-bound at about 53 fps (44 with

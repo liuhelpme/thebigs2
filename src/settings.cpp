@@ -72,7 +72,7 @@ fullscreen_exclusive = false
 display_resolution = "desktop"
 
 # Monitor refresh rate in Hz, exclusive fullscreen only. 0 = the desktop rate.
-# The game runs at 60 fps in menus and 30 in matches (see fps_60): 60 or 120
+# The game runs at 60 fps in menus and 30 in matches (see frame_rate): 60 or 120
 # give the smoothest motion; 144/165 will judder slightly unless you have VRR
 # (G-Sync/FreeSync).
 display_refresh_rate = 0
@@ -87,7 +87,7 @@ present_letterbox = true
 # Internal render scale: 1 = 1x (the game's own 1280x720), 2 = 2x (2560x1440),
 # 3 = 3x (3840x2160). Higher is sharper and slower. Use 1 on GPUs without
 # fragment shader interlock (AMD RADV, Steam Deck) - see
-# render_target_path_vulkan - and with fps_60 = true.
+# render_target_path_vulkan - and with frame_rate = 60.
 resolution_scale = 2
 
 # How the picture is scaled to the screen: "bilinear" (default), "cas"
@@ -105,20 +105,23 @@ render_target_path_vulkan = "fsi"
 # stands at a distance and costs some GPU time.
 anisotropic_override = 3
 
-# --- Experimental ------------------------------------------------------------
-# 60 fps in matches. The game caps matches at 30 fps (menus already run at
-# 60); true lifts that cap. Game speed stays correct - the game steps by real
-# time. BEST USED WITH resolution_scale = 1: at 2x the GPU may not keep 60
-# (about 53 fps on an RTX 4060), which looks worse than a steady 30. If it
-# stutters, set resolution_scale = 1 or turn this off.
-fps_60 = false
-
 # The game's 4x MSAA on the main scene (smoother edges). On the Xbox 360 it
 # needed the frame drawn in 3 tiles; without it the GPU emulation does about
 # half the CPU work and ~20% less GPU work. Not set = automatic: on at 1x,
 # off at 2x and up (the resolution scale already smooths edges) and on the
 # Steam Deck.
 # scene_msaa = true
+
+# --- Frame rate --------------------------------------------------------------
+# Frame rate in matches: 30 or 60. Menus always run at 60.
+#   30 = the game's own cap, as on the Xbox 360 (default).
+#   60 = EXPERIMENTAL. Game speed stays correct (the game steps by real time),
+#        but it needs a fast CPU and GPU:
+#        - desktop: holds 60 at resolution_scale = 1; at 2 the GPU may fall
+#          short (about 53 fps on an RTX 4060), which looks worse than 30;
+#        - Steam Deck: holds 60 in gameplay, slows down during transitions.
+#        If it stutters, go back to 30.
+frame_rate = 30
 
 # --- Controls ----------------------------------------------------------------
 # Keyboard key that quits (controller: hold Back + Start for 2 seconds).
@@ -233,13 +236,26 @@ bool SteamDeckProfile() {
 
 namespace {
 
+// Appended to settings files written by older versions that lack it.
+constexpr const char* kFrameRateSection = R"TOML(
+# --- Frame rate --------------------------------------------------------------
+# Frame rate in matches: 30 or 60. Menus always run at 60.
+#   30 = the game's own cap, as on the Xbox 360 (default).
+#   60 = EXPERIMENTAL. Game speed stays correct (the game steps by real time),
+#        but it needs a fast CPU and GPU:
+#        - desktop: holds 60 at resolution_scale = 1; at 2 the GPU may fall
+#          short (about 53 fps on an RTX 4060), which looks worse than 30;
+#        - Steam Deck: holds 60 in gameplay, slows down during transitions.
+#        If it stutters, go back to 30.
+frame_rate = 30
+)TOML";
+
 constexpr const char* kSteamDeckHeader = R"TOML(# Steam Deck build. These defaults are tuned for the Deck: the game renders at
 # its own 1280x720 (resolution_scale = 1), which fills the 1280x800 screen edge
 # to edge with thin bars top and bottom; host render targets (the Deck's GPU
 # can't run "fsi"); the game's own texture filtering; and no keyboard
-# controls. Matches run at the game's 30 fps; fps_60 is experimental and the
-# Deck's GPU probably can't hold 60 in matches - try it, watch the F3 overlay
-# (or Steam's performance overlay) and turn it off if it stutters.
+# controls. Matches run at the game's 30 fps; frame_rate = 60 is experimental:
+# it holds 60 in gameplay and slows down during transitions.
 #
 )TOML";
 
@@ -260,9 +276,61 @@ std::string ConfigTemplate() {
 
 }  // namespace
 
+namespace {
+
+// True if a top-level `key = ...` line exists.
+bool HasSetting(const std::string& text, std::string_view key) {
+  std::istringstream in(text);
+  std::string line;
+  while (std::getline(in, line)) {
+    size_t i = line.find_first_not_of(" \t");
+    if (i == std::string::npos || line.compare(i, key.size(), key) != 0) continue;
+    size_t j = line.find_first_not_of(" \t", i + key.size());
+    if (j != std::string::npos && line[j] == '=') return true;
+  }
+  return false;
+}
+
+// Settings files are written once, on first launch: add sections that newer
+// versions introduced, leaving everything else as the user has it.
+void UpgradeConfigFile(const fs::path& config_path) {
+  std::string text;
+  {
+    std::ifstream in(config_path, std::ios::binary);
+    if (!in) return;
+    std::stringstream ss;
+    ss << in.rdbuf();
+    text = ss.str();
+  }
+  if (HasSetting(text, "frame_rate")) return;
+  // frame_rate replaces fps_60: carry an existing `fps_60 = true` over.
+  std::string section = kFrameRateSection;
+  std::string fps_60_line;
+  {
+    std::istringstream in(text);
+    std::string line;
+    while (std::getline(in, line)) {
+      size_t i = line.find_first_not_of(" \t");
+      if (i != std::string::npos && line.compare(i, 6, "fps_60") == 0) fps_60_line = line;
+    }
+  }
+  if (fps_60_line.find("true") != std::string::npos) {
+    section.replace(section.find("frame_rate = 30"), 15, "frame_rate = 60");
+  }
+  std::ofstream out(config_path, std::ios::binary | std::ios::app);
+  if (!out) return;
+  if (!text.empty() && text.back() != '\n') out << '\n';
+  out << "\n# Added by a newer version of the game (frame_rate replaces fps_60).\n" << section;
+}
+
+}  // namespace
+
 void EnsureConfigFile(const fs::path& config_path) {
   std::error_code ec;
-  if (fs::exists(config_path, ec)) return;
+  if (fs::exists(config_path, ec)) {
+    UpgradeConfigFile(config_path);
+    return;
+  }
   fs::create_directories(config_path.parent_path(), ec);
   std::ofstream f(config_path, std::ios::binary);
   if (f) f << ConfigTemplate();
