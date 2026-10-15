@@ -38,6 +38,10 @@ done
 for i in 0 1 2 3; do shot "bat$i"; sleep 1; done
 [ -n "$RDC" ] && key F9 10
 # HOLD=<s>: keep playing that long (A every few seconds pitches) before quitting
-if [ -n "$HOLD" ]; then end=$(( $(date +%s) + HOLD )); while [ "$(date +%s)" -lt "$end" ]; do key space 4; done; fi
+# (HOLD_IDLE=1: don't pitch - the same frame content throughout, for benchmarks)
+if [ -n "$HOLD" ]; then
+  end=$(( $(date +%s) + HOLD ))
+  while [ "$(date +%s)" -lt "$end" ]; do if [ -n "$HOLD_IDLE" ]; then sleep 4; else key space 4; fi; done
+fi
 key F10 8
 kill $GS 2>/dev/null; sleep 1

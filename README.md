@@ -76,6 +76,9 @@ these fixes on a local branch (`fix/stability`, not in the upstream SDK):
 | aa272a5 | Multi-object waits block instead of spinning; thread names fit Linux's 15 chars | The audio thread spins ~77% of a core |
 | 0330f2e | Timer queue thread blocks between timers | ~10% of a core while idle |
 | 4d14346 | Frame pacing: frames presented on a fixed beat after the emulated vblank, precise vblank timer, achievement toast only registered while shown (adapted from SVR2011-Recomp's frame-pacing patch) | Uneven frame times: frames reach the screen whenever the GPU emulation finishes them |
+| 87978cb | Write-watch faults no longer parse `/proc/self/maps` under the global lock | Every game write to GPU-watched memory stalls the GPU thread and other game threads (~20% of the GPU thread's frame time) |
+| 8088994 | Shared memory validity checked without the global lock | The GPU thread contends with game threads on every draw |
+| e806d48 | Cheaper per-draw constants and cvar check; `cp_frame_stats` | ~10% more GPU thread time per frame |
 
 With an unpatched SDK the game still runs; use `resolution_scale = 1` and
 leave `fps_60` off.
