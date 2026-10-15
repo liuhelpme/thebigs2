@@ -108,10 +108,17 @@ anisotropic_override = 3
 # --- Experimental ------------------------------------------------------------
 # 60 fps in matches. The game caps matches at 30 fps (menus already run at
 # 60); true lifts that cap. Game speed stays correct - the game steps by real
-# time. BEST USED WITH resolution_scale = 1: at 2x the GPU usually can't keep
-# 60 and the frame rate swings between 40 and 50, which looks worse than a
-# steady 30. If it stutters, set resolution_scale = 1 or turn this off.
+# time. BEST USED WITH resolution_scale = 1: at 2x the GPU may not keep 60
+# (about 53 fps on an RTX 4060), which looks worse than a steady 30. If it
+# stutters, set resolution_scale = 1 or turn this off.
 fps_60 = false
+
+# The game's 4x MSAA on the main scene (smoother edges). On the Xbox 360 it
+# needed the frame drawn in 3 tiles; without it the GPU emulation does about
+# half the CPU work and ~20% less GPU work. Not set = automatic: on at 1x,
+# off at 2x and up (the resolution scale already smooths edges) and on the
+# Steam Deck.
+# scene_msaa = true
 
 # --- Controls ----------------------------------------------------------------
 # Keyboard key that quits (controller: hold Back + Start for 2 seconds).

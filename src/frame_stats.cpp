@@ -210,6 +210,7 @@ REXCVAR_DEFINE_BOOL(fps_60, false, "The Bigs 2",
                     "Experimental: run matches at 60 fps instead of the game's "
                     "30 fps cap; best with resolution_scale=1");
 
+#if !defined(TB2_RENDER_TRACE)  // the trace build wraps every D3D function itself
 extern "C" REX_FUNC(__imp__sub_823B9CB8);
 extern "C" REX_FUNC(sub_823B9CB8) {
   const uint32_t arg = ctx.r3.u32;
@@ -223,3 +224,4 @@ extern "C" REX_FUNC(sub_823B9CB8) {
   }
   [[clang::musttail]] return __imp__sub_823B9CB8(ctx, base);
 }
+#endif

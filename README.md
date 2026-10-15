@@ -163,6 +163,7 @@ Settings live in **`thebigs2.toml`**:
 | `render_target_path_vulkan` | `"fsi"` | `fsi` or `host` |
 | `anisotropic_override` | `3` | Texture filtering: `-1` = the game's own, `0` = off, `1`–`5` = forced 1x–16x |
 | `fps_60` | `false` | **Experimental.** 60 fps in matches instead of 30 — best with `resolution_scale = 1` (see below) |
+| `scene_msaa` | automatic | The game's 4x MSAA on the main scene; automatic = on at 1x, off at 2x+ and on the Steam Deck (see below) |
 | `fps_log_interval` | `0` | Log the frame rate every N seconds (`0` = off) |
 | `bind_quit` | `"F10"` | Quit key |
 | `mnk_mode` | `true` | Keyboard plays as player 1's controller (alongside the first pad) |
@@ -253,6 +254,7 @@ writes on first launch:
 | `anisotropic_override` | `3` (4x) | `-1` (game's own) | Saves texture-sampling time on the Deck's GPU; this is what the Xbox 360 did |
 | `mnk_mode` | `true` | `false` | Steam Input can send key presses from the trackpads and back buttons, which would also drive player 1 |
 | `fps_60` | `false` | `false` | The Deck's GPU is far weaker than the desktop GPUs 60 fps was tested on; matches stay at the game's 30 |
+| `scene_msaa` | off at 2x (on at 1x) | off | Without the game's 4x MSAA it also skips its 3-tile rendering: about half the CPU work of the GPU emulation and less GPU work |
 
 It doesn't copy settings from an older desktop install (only saves), so the
 Deck defaults stick. `TB2_PROFILE= ./TheBigs2-SteamDeck-x86_64.AppImage`
@@ -319,10 +321,24 @@ logs the presentation intervals every 5 s.
 The game runs menus at 60 fps but caps matches at 30 (it asks for a flip every
 second vblank). `fps_60 = true` lifts that cap. Gameplay speed is unaffected:
 the game steps its simulation by measured real time. **Use it with
-`resolution_scale = 1`**: at 1x an RTX 4060 holds 60 at ~40% GPU load, while
-at 2x the FSI render path is GPU-bound at 40–50 fps, which paces worse than a
-steady 30. It needs the SDK's command-processor fix (bulk register writes,
-`fix/stability` dfd3581); without it even 1x stays near 30.
+`resolution_scale = 1`**: at 1x a Ryzen 5600 + RTX 4060 holds 60 throughout a
+match, while at 2x the FSI render path is GPU-bound at about 53 fps (44 with
+`scene_msaa = true`), which paces worse than a steady 30. It needs the SDK's
+command-processor fixes on `fix/stability`; without them even 1x stays near 30.
+
+### Main scene MSAA and tiling
+
+The game draws its main scene with 4x MSAA. A 1280x720 frame at 4x MSAA
+doesn't fit the Xbox 360's 10 MB EDRAM, so it renders the scene in 3 tiles:
+every frame the GPU replays the scene's commands once per 240-row band. In
+emulation that triples the GPU command thread's work (~3,800 draws a frame
+instead of ~1,400) and adds the MSAA and per-tile passes on the host GPU.
+`scene_msaa = false` sets the scene up without MSAA (`src/render_tweaks.cpp`),
+which fits EDRAM in one piece, so the tiling goes too: the command thread's
+work per frame halves (10.5 -> 5.0 ms here) and the GPU renders ~20% more
+frames. At 2x the resolution scaling smooths edges about as well as the MSAA
+did, so it's off by default there and on the Steam Deck; at 1x edges are
+visibly rougher without it, so it stays on there.
 
 To check, press F3 for the debug overlay (shows the game's fps) or run with
 `--fps_log_interval=5`: every 5 s the log gets the frame rate, the number of

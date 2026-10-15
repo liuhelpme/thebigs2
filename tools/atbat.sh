@@ -10,14 +10,16 @@
 # Writes <outdir>/bat0..3.png (the at-bat) and tut*.png (tutorial pages seen).
 # Saves go to <outdir>/data (a fresh profile-less folder), never the user's.
 # Needs gamescope, xdotool, python3 + PIL/numpy; the game data in game/.
-O="$1"; shift; mkdir -p "$O"
+O="$1"; shift; mkdir -p "$O"; O="$(cd "$O" && pwd)"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 [ -n "$RDC" ] && RDC="${RENDERDOCCMD:-renderdoccmd} capture -w -c $O/cap"
 # WRAP="<cmd>": launch the game through it instead (e.g. a gdb sampler)
 [ -n "$WRAP" ] && RDC="$WRAP"
-export RDC ROOT
+# BIN=<path>: game binary (default: the release build)
+BIN="${BIN:-./out/build/linux-amd64-release/thebigs2}"
+export RDC ROOT BIN
 XDG_CONFIG_HOME="$O/cfg" gamescope --backend headless -W 1280 -H 720 -w 1280 -h 720 -- \
-  sh -c 'cd "$ROOT" && exec $RDC ./out/build/linux-amd64-release/thebigs2 --user_data_root="$0" "$@"' "$O/data" "$@" \
+  sh -c 'cd "$ROOT" && exec $RDC "$BIN" --user_data_root="$0" --game_data_root="$ROOT/game" "$@"' "$O/data" "$@" \
   > "$O/gamescope.txt" 2>&1 &
 GS=$!
 export DISPLAY=:2 GAMESCOPE_WAYLAND_DISPLAY=gamescope-0

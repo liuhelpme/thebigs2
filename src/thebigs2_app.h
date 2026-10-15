@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <thread>
 
@@ -95,6 +96,16 @@ class Thebigs2App : public rex::ReXApp {
       // The keyboard acts as player 1's controller (merged with the first
       // pad, so both work at once). Bindings are the keybind_* settings.
       set_default("mnk_mode", "true");
+    }
+
+    // Main scene 4x MSAA (render_tweaks.cpp). Without it the game also drops
+    // its 3-tile rendering: about half the GPU command thread's work and ~20%
+    // of the GPU's. At 2x and up the resolution scaling already smooths the
+    // edges (the image is practically the same), and the Deck needs the
+    // headroom, so it is only kept at 1x on the desktop.
+    if (tb2::SteamDeckProfile() ||
+        std::atoi(rex::cvar::GetFlagByName("resolution_scale").c_str()) >= 2) {
+      set_default("scene_msaa", "false");
     }
   }
 

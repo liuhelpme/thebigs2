@@ -18,6 +18,7 @@ set(THEBIGS2_SOURCES
     src/settings.cpp
     src/frame_stats.cpp
     src/first_launch.cpp
+    src/render_tweaks.cpp
 )
 
 if(WIN32)
