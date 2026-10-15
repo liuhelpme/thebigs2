@@ -21,7 +21,7 @@ No game data is included. You need your own dump of the disc.
 | `src/frame_stats.cpp` | Frame-rate counter (F3 overlay, log) and the experimental 60 fps unlock (`frame_rate`) |
 | `src/render_trace.cpp`, `src/renderdoc_capture.cpp` | Debug tooling: render-call trace build (F8), RenderDoc capture (F9) |
 | `docs/native-renderer.md` | Plan and findings for a native Vulkan renderer |
-| `tools/` | Analysis scripts (call graph, string refs, render-trace generator), `atbat.sh` (scripted gameplay frame for rendering checks) |
+| `tools/` | Analysis scripts (call graph, string refs, render-trace generator), `atbat.sh` (scripted gameplay frame for rendering checks), `perf/` (GPU command thread benchmark, gdb stack sampler) |
 | `packaging/` | AppImage recipe (`build-appimage.sh`, desktop file, icon; `PROFILE=steamdeck` for the Deck) |
 | `game/` | **Your** extracted disc contents (`default.xex` + data). Git-ignored. |
 | `generated/` | Codegen output — regenerated, never edit by hand |
