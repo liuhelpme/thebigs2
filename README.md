@@ -278,10 +278,11 @@ If it closes right away, run it from Konsole in Desktop Mode
 (`cd ~/Games/TheBigs2 && ./TheBigs2-SteamDeck-x86_64.AppImage`): errors from
 before the game's log starts (e.g. a missing library) only show there.
 
-Not yet tested on a Deck: the defaults follow from the hardware, not from
-measurements. Use the F3 overlay or Steam's performance overlay to check the
-frame rate, and the `logs/` folder if something goes wrong. The first minutes
-can stutter while shaders compile (they're cached in `cache/` after that). The AppImage contains code
+Tested on a Steam Deck (SteamOS 3.8): it runs at 30 fps, and with
+`frame_rate = 60` it holds 60 in gameplay and slows down during transitions.
+Use the F3 overlay or Steam's performance overlay to check the frame rate, and
+the `logs/` folder if something goes wrong. The first minutes can stutter
+while shaders compile (they're cached in `cache/` after that). The AppImage contains code
 recompiled from the game's executable, so treat it like the game itself and
 don't distribute it.
 
