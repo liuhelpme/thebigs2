@@ -13,7 +13,10 @@
 O="$1"; shift; mkdir -p "$O"; O="$(cd "$O" && pwd)"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 [ -n "$RDC" ] && RDC="${RENDERDOCCMD:-renderdoccmd} capture -w -c $O/cap"
-# WRAP="<cmd>": launch the game through it instead (e.g. a gdb sampler)
+# WRAP="<cmd>": launch the game through it instead (e.g. a gdb sampler, or
+# wine for the Windows build: WRAP=wine BIN=out/build/win-amd64-cross/thebigs2.exe;
+# set WINEDLLOVERRIDES="msvcp140,msvcp140_atomic_wait,vcruntime140,vcruntime140_1=n",
+# Wine's builtin msvcp140 is too old for it - see packaging/build-windows.sh)
 [ -n "$WRAP" ] && RDC="$WRAP"
 # BIN=<path>: game binary (default: the release build)
 BIN="${BIN:-./out/build/linux-amd64-release/thebigs2}"
@@ -38,6 +41,7 @@ for t in $(seq 0 19); do
   else clear=$((clear + 1)); [ $clear -ge 2 ] && break; sleep 2; fi
 done
 for i in 0 1 2 3; do shot "bat$i"; sleep 1; done
+[ -n "$LATESHOT" ] && { sleep "$LATESHOT"; shot late; }
 [ -n "$RDC" ] && key F9 10
 # HOLD=<s>: keep playing that long (A every few seconds pitches) before quitting
 # (HOLD_IDLE=1: don't pitch - the same frame content throughout, for benchmarks)
@@ -46,4 +50,10 @@ if [ -n "$HOLD" ]; then
   while [ "$(date +%s)" -lt "$end" ]; do if [ -n "$HOLD_IDLE" ]; then sleep 4; else key space 4; fi; done
 fi
 key F10 8
-kill $GS 2>/dev/null; sleep 1
+# gamescope ignores SIGTERM while a child hangs on (Wine's helper processes).
+pkill -9 -P $GS 2>/dev/null; kill -9 $GS 2>/dev/null; sleep 1
+if [ "$WRAP" = wine ]; then  # Wine's services (winedevice.exe, ...) outlive it
+  for p in $(pgrep -f 'system32'); do
+    grep -qz "^WINEPREFIX=${WINEPREFIX:-$HOME/.wine}\$" /proc/$p/environ 2>/dev/null && kill -9 $p
+  done
+fi

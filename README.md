@@ -22,7 +22,7 @@ No game data is included. You need your own dump of the disc.
 | `src/render_trace.cpp`, `src/renderdoc_capture.cpp` | Debug tooling: render-call trace build (F8), RenderDoc capture (F9) |
 | `docs/native-renderer.md` | Plan and findings for a native Vulkan renderer |
 | `tools/` | Analysis scripts (call graph, string refs, render-trace generator), `atbat.sh` (scripted gameplay frame for rendering checks), `perf/` (GPU command thread benchmark, gdb stack sampler) |
-| `packaging/` | AppImage recipe (`build-appimage.sh`, desktop file, icon; `PROFILE=steamdeck` for the Deck) |
+| `packaging/` | AppImage recipe (`build-appimage.sh`, desktop file, icon; `PROFILE=steamdeck` for the Deck); Windows cross-build (`build-windows.sh`, `windows/` toolchain file and icon) |
 | `game/` | **Your** extracted disc contents (`default.xex` + data). Git-ignored. |
 | `generated/` | Codegen output — regenerated, never edit by hand |
 
@@ -56,6 +56,8 @@ cd rexglue-sdk
 cmake --preset win-amd64
 cmake --build out/build/win-amd64 --config Release --target install
 ```
+
+(Or cross-compile the Windows build on Linux: section 6.)
 
 Install registers the SDK with CMake, so this project finds it automatically.
 To use a source checkout instead, configure with `-DREXSDK_DIR=/path/to/rexglue-sdk`.
@@ -120,14 +122,16 @@ re-runs only when the XEX or a config file changes.
 2. A `game/` folder containing `default.xex` next to the executable (or the
    AppImage), or in the working directory.
 3. A previous extraction in the user data folder
-   (`~/.local/share/thebigs2/game`; for the AppImage, `game/` next to it).
+   (`~/.local/share/thebigs2/game`; for the AppImage and the Windows folder,
+   `game/` next to it).
 4. Otherwise the **setup screen** opens in the game window and the disc image
    you choose is extracted there once. It preselects `iso_path` from the
    settings file (or `--iso_path=...`), else a matching `.iso` next to the
    executable / AppImage.
 
 The setup screen is a small file browser (shortcuts for the game's folder,
-Home, Downloads and mounted SD cards / USB drives) that checks the chosen
+Home, Downloads and mounted SD cards / USB drives, or drive letters on
+Windows) that checks the chosen
 image right away, then shows the extraction progress, with Cancel. It works
 with mouse, touchscreen, keyboard (arrows, Enter, Backspace = up a folder)
 and controller (D-pad / stick, A, B = up a folder), fullscreen and in Steam
@@ -147,7 +151,8 @@ Settings live in **`thebigs2.toml`**:
 - `~/.config/thebigs2/thebigs2.toml` on Linux (`%APPDATA%\thebigs2\` on Windows),
   written with comments on first launch;
 - or, for a portable install, a `thebigs2.toml` placed next to the executable;
-- the AppImage keeps it in `config/` next to itself (see section 5).
+- the AppImage and the Windows build keep it in `config/` next to themselves
+  (see sections 5 and 6).
 
 | Setting | Default | |
 |---|---|---|
@@ -162,6 +167,7 @@ Settings live in **`thebigs2.toml`**:
 | `present_effect` | `"bilinear"` | `bilinear`, `cas`, `fsr` |
 | `render_target_path_vulkan` | `"fsi"` | `fsi` or `host` |
 | `anisotropic_override` | `3` | Texture filtering: `-1` = the game's own, `0` = off, `1`–`5` = forced 1x–16x |
+| `gpu_backend` | `"vulkan"` | Graphics API. Windows only: `"d3d12"` is the alternative (untested, see section 6) |
 | `frame_rate` | `30` | Frame rate in matches: `30` (the game's own) or `60` — **60 is experimental** (see below). Replaces `fps_60`, which still works |
 | `scene_msaa` | automatic | The game's 4x MSAA on the main scene; automatic = on at 1x, off at 2x+ and on the Steam Deck (see below) |
 | `fps_log_interval` | `0` | Log the frame rate every N seconds (`0` = off) |
@@ -303,7 +309,8 @@ don't distribute it.
   "Unable To Connect To Device"). Boots, plays, saves and loads on Linux.
 - Frame rate: 60 fps in menus, 30 in matches (the game's own cap); 60 in
   matches with the experimental `frame_rate = 60` (see below).
-- Windows: same sources and presets; not built yet.
+- Windows: cross-compiled on Linux (section 6); plays at 30 fps in matches
+  under Wine 10 with Vulkan. Not yet run on real Windows.
 
 ### Frame pacing
 
@@ -387,7 +394,72 @@ close the window through the normal shutdown. F10 can be rebound with the
 | F9 | Capture frames in RenderDoc (only when launched from RenderDoc) |
 | F8 | Record a render trace (trace build only, `-DTB2_RENDER_TRACE=ON`) |
 
-## 6. The iteration loop
+## 6. Windows build (cross-compiled on Linux)
+
+```bash
+packaging/build-windows.sh      # -> out/windows/TheBigs2-windows-x64.zip
+```
+
+The zip holds `thebigs2.exe`, `rexruntime.dll`, the Xenos GPU plugin
+`rexgpu-xenos.dll` and the Visual C++ runtime DLLs (~15 MB zipped) — **no
+game data**. Unzip it to a folder of its own, run `thebigs2.exe` and pick your
+`.iso` on the setup screen, as with the AppImage. It is portable the same way:
+`game/`, `config/`, `saves/`, `cache/` and `logs/` are created next to the
+exe. If the folder isn't writable (e.g. under `Program Files`), it uses
+`%APPDATA%\thebigs2` and the SDK's user data folder instead.
+
+Needs 64-bit Windows 10/11 and a current GPU driver with Vulkan (NVIDIA, AMD
+or Intel). It renders with **Vulkan**, like Linux, so the
+same settings and SDK fixes apply; `gpu_backend = "d3d12"` switches to the
+SDK's Direct3D 12 renderer, which is untested here (it lacks the 4x MSAA
+resolve fix, and under Wine it draws a black screen).
+
+**Why the Visual C++ DLLs are bundled.** The build uses the MSVC 14.44
+headers, whose `std::mutex` / `condition_variable` need `msvcp140.dll` 14.40
+or newer. With an older one (an outdated VC++ redistributable, or Wine's
+builtin), a condition-variable wait doesn't release its mutex: the vblank
+thread then blocks on the GPU thread every frame and matches crawl at 1–2 fps
+(menus look fine). Windows loads the DLLs next to the exe first. Under Wine
+they are only used with
+`WINEDLLOVERRIDES="msvcp140,msvcp140_atomic_wait,vcruntime140,vcruntime140_1=n"`.
+
+**Building it.** Everything runs on Linux with the same clang 20:
+
+1. The MSVC CRT and Windows SDK headers/libraries, via
+   [xwin](https://github.com/Jake-Shadle/xwin) (accepts Microsoft's license):
+   ```bash
+   xwin --accept-license --arch x86_64 splat --output /mnt/Games/Non-Steam/msvc-sdk
+   ```
+   `packaging/windows/clang-msvc-cross.cmake` looks there, or in `XWIN_DIR`.
+   Two headers are included with a different case than xwin writes them; add
+   `ln -s objbase.h sdk/include/um/ObjBase.h` and
+   `ln -s sdkddkver.h sdk/include/shared/SDKDDKVer.h` in that folder.
+2. The SDK (`fix/stability`) for Windows, installed to `~/rexsdk-install-win`
+   (Vulkan and D3D12 both on):
+   ```bash
+   cd ~/src/rexglue-sdk-fix
+   cmake -S . -B out/build/win-amd64-cross -G Ninja -DCMAKE_BUILD_TYPE=Release \
+     -DCMAKE_TOOLCHAIN_FILE=/mnt/Games/Non-Steam/thebigs2/packaging/windows/clang-msvc-cross.cmake \
+     -DREXGLUE_USE_VULKAN=ON -DREXGLUE_USE_D3D12=ON \
+     -DCMAKE_INSTALL_PREFIX=$HOME/rexsdk-install-win
+   cmake --build out/build/win-amd64-cross && cmake --install out/build/win-amd64-cross
+   rm ~/.cmake/packages/rexglue/$(echo -n ~/rexsdk-install-win | md5sum | cut -c1-32)
+   ```
+   The last line takes the Windows SDK back out of CMake's package registry,
+   where the install puts it; otherwise a Linux configure could pick it up.
+   Don't set `CMAKE_C(XX)_FLAGS` on the command line: the toolchain file's
+   include paths are in their defaults.
+3. `packaging/build-windows.sh` configures `out/build/win-amd64-cross`, builds
+   (codegen runs with the Linux SDK's `rexglue`), downloads the VC++
+   redistributable from Microsoft once to take the DLLs out of it
+   (`cabextract`), checks that every DLL the binaries import is bundled or
+   part of Windows, and zips the folder.
+
+To test under Wine: `WRAP=wine BIN=./out/build/win-amd64-cross/thebigs2.exe
+tools/atbat.sh <outdir>` with the `WINEDLLOVERRIDES` above (copy the four
+DLLs from `out/windows/TheBigs2-windows-x64/` into the build folder first).
+
+## 7. The iteration loop
 
 This is not push-button. Expect the first codegen run to report validation
 errors. The loop is:

@@ -76,8 +76,11 @@ class Thebigs2App : public rex::ReXApp {
     };
     // These cvars live in the GPU plugin and only exist once it is loaded, so
     // load it here (ReXApp skips its own load when config.graphics is set).
+    // Vulkan by default on Windows too, where the SDK would pick D3D12: the
+    // settings below and several SDK fixes (resolve shader) are Vulkan-only.
     if (!config.graphics && !config.gpu_plugin.empty()) {
-      config.graphics = rex::system::LoadGpuPlugin(config.gpu_plugin);
+      config.graphics = rex::system::LoadGpuPlugin(
+          config.gpu_plugin, rex::cvar::GetFlagByName("gpu_backend"));
     }
     if (tb2::SteamDeckProfile()) {
       // Steam Deck AppImage: RADV has no fragment shader interlock, so host

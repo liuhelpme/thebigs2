@@ -35,6 +35,8 @@ REXCVAR_DEFINE_STRING(display_resolution, "desktop", "The Bigs 2",
                       "size when windowed, display mode in exclusive fullscreen");
 REXCVAR_DEFINE_DOUBLE(display_refresh_rate, 0.0, "The Bigs 2",
                       "Monitor refresh rate in Hz for exclusive fullscreen; 0 = desktop rate");
+REXCVAR_DEFINE_STRING(gpu_backend, "vulkan", "The Bigs 2",
+                      "Graphics API: 'vulkan' or 'd3d12' (Windows only, less tested)");
 
 namespace tb2 {
 namespace fs = std::filesystem;
@@ -51,8 +53,8 @@ constexpr const char* kTemplate = R"TOML(# The Bigs 2 - settings
 
 # --- Game disc ---------------------------------------------------------------
 # Your disc image: a full disc dump (.iso) or an XISO. On first launch its
-# files are extracted to the game folder next to the AppImage (or to
-# ~/.local/share/thebigs2/game); after that the .iso isn't needed. The setup
+# files are extracted to the game folder next to the AppImage / thebigs2.exe
+# (or to ~/.local/share/thebigs2/game); after that the .iso isn't needed. The setup
 # screen on first launch preselects this; the image you pick there is saved here.
 iso_path = ""
 
@@ -83,7 +85,7 @@ monitor = 0
 # Keep the game's 16:9 picture with black bars on other aspect ratios.
 present_letterbox = true
 
-# --- Scaling -----------------------------------------------------------------
+@GPU_BACKEND@# --- Scaling -----------------------------------------------------------------
 # Internal render scale: 1 = 1x (the game's own 1280x720), 2 = 2x (2560x1440),
 # 3 = 3x (3840x2160). Higher is sharper and slower. Use 1 on GPUs without
 # fragment shader interlock (AMD RADV, Steam Deck) - see
@@ -262,6 +264,15 @@ constexpr const char* kSteamDeckHeader = R"TOML(# Steam Deck build. These defaul
 // The template with the Steam Deck values (see kSteamDeckHeader).
 std::string ConfigTemplate() {
   std::string text = kTemplate;
+  const size_t gpu = text.find("@GPU_BACKEND@");
+#if defined(_WIN32)
+  text.replace(gpu, 13,
+               "# Graphics API: \"vulkan\" (default; the settings below are tuned for it)\n"
+               "# or \"d3d12\" (less tested; uses render_target_path_d3d12 instead).\n"
+               "gpu_backend = \"vulkan\"\n\n");
+#else
+  text.erase(gpu, 13);
+#endif
   if (!SteamDeckProfile()) return text;
   auto set = [&text](std::string_view from, std::string_view to) {
     const size_t pos = text.find(std::string("\n") + std::string(from) + "\n");
@@ -383,10 +394,22 @@ void SaveConfigString(const fs::path& config_path, std::string_view key, std::st
   out << text;
 }
 
+#if defined(_WIN32)
+// access() ignores ACLs on Windows (e.g. Program Files): try creating a file.
+bool DirWritable(const fs::path& dir) {
+  const fs::path probe = dir / ".thebigs2_write_test";
+  { std::ofstream f(probe, std::ios::binary | std::ios::trunc); if (!f) return false; }
+  std::error_code ec;
+  fs::remove(probe, ec);
+  return true;
+}
+#endif
+
 bool ExeDirWritable() {
   if (InAppImage()) return false;
 #if defined(_WIN32)
-  return true;
+  static const bool writable = DirWritable(rex::filesystem::GetExecutableFolder());
+  return writable;
 #else
   return access(rex::filesystem::GetExecutableFolder().c_str(), W_OK) == 0;
 #endif
@@ -401,10 +424,12 @@ fs::path LauncherFolder() {
 
 bool PortableMode() {
   static const bool portable = [] {
-    if (!InAppImage()) return false;
 #if defined(_WIN32)
-    return true;
+    // The Windows zip is a folder like the AppImage's: everything next to the
+    // exe, unless it was put somewhere read-only (Program Files).
+    return ExeDirWritable();
 #else
+    if (!InAppImage()) return false;
     if (access(LauncherFolder().c_str(), W_OK) == 0) return true;
     // Logging isn't up yet; stderr is all there is.
     std::fprintf(stderr,
@@ -433,8 +458,8 @@ void MigrateToPortable(const fs::path& old_user_data) {
         continue;
       }
       fs::copy(e.path(), saves / name, fs::copy_options::recursive, ec);
-      std::fprintf(stderr, "thebigs2: copied %s to %s%s\n", e.path().c_str(),
-                   (saves / name).c_str(), ec ? (" FAILED: " + ec.message()).c_str() : "");
+      std::fprintf(stderr, "thebigs2: copied %s to %s%s\n", e.path().string().c_str(),
+                   (saves / name).string().c_str(), ec ? (" FAILED: " + ec.message()).c_str() : "");
     }
   }
   const fs::path config = root / "config" / kConfigName;
@@ -443,7 +468,7 @@ void MigrateToPortable(const fs::path& old_user_data) {
   if (!SteamDeckProfile() && !fs::exists(config, ec) && fs::is_regular_file(old_config, ec)) {
     fs::create_directories(config.parent_path(), ec);
     fs::copy_file(old_config, config, ec);
-    std::fprintf(stderr, "thebigs2: copied %s to %s%s\n", old_config.c_str(), config.c_str(),
+    std::fprintf(stderr, "thebigs2: copied %s to %s%s\n", old_config.string().c_str(), config.string().c_str(),
                  ec ? (" FAILED: " + ec.message()).c_str() : "");
   }
 }

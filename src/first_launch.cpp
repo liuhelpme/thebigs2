@@ -24,6 +24,16 @@
 
 #include "settings.h"
 
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 namespace tb2 {
 namespace fs = std::filesystem;
 
@@ -93,7 +103,15 @@ std::vector<std::pair<std::string, fs::path>> Places(const fs::path& start_dir) 
       out.emplace_back("Downloads", fs::path(home) / "Downloads");
     }
   }
-#if !defined(_WIN32)
+#if defined(_WIN32)
+  const DWORD drives = GetLogicalDrives();
+  for (int i = 0; i < 26; ++i) {
+    if (drives & (1u << i)) {
+      const std::string root = std::string(1, char('A' + i)) + ":\\";
+      out.emplace_back("Drive " + root, fs::path(root));
+    }
+  }
+#else
   const char* user = std::getenv("USER");
   for (const char* base : {"/run/media", "/media"}) {
     for (const auto& e : fs::directory_iterator(base, ec)) {

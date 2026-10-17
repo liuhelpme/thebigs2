@@ -10,6 +10,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(generated/rexglue.cmake)
 
+# Cross builds (Windows from Linux, packaging/windows/) can't run the target's
+# rexglue.exe for codegen; use the host SDK's. The generated code is the same.
+if(CMAKE_CROSSCOMPILING)
+    find_program(REXGLUE_HOST_TOOL rexglue
+        HINTS "$ENV{HOME}/rexsdk-install/bin" NO_CMAKE_FIND_ROOT_PATH)
+    if(NOT REXGLUE_HOST_TOOL)
+        message(FATAL_ERROR "Cross build: set REXGLUE_HOST_TOOL to a host rexglue binary")
+    endif()
+    set_target_properties(rex::rexglue PROPERTIES IMPORTED_LOCATION_RELEASE "${REXGLUE_HOST_TOOL}")
+endif()
+
 # Sources
 set(THEBIGS2_SOURCES
     src/main.cpp
@@ -22,7 +33,7 @@ set(THEBIGS2_SOURCES
 )
 
 if(WIN32)
-    add_executable(thebigs2 WIN32 ${THEBIGS2_SOURCES})
+    add_executable(thebigs2 WIN32 ${THEBIGS2_SOURCES} packaging/windows/thebigs2.rc)
 else()
     add_executable(thebigs2 ${THEBIGS2_SOURCES})
 endif()
