@@ -5,16 +5,16 @@ on:
     branches: [master, amd-radv-optimization]
   pull_request:
     branches: [master]
-  workflow_dispatch:  # Manual trigger from Actions tab
+  workflow_dispatch:
 
 permissions:
-  contents: write  # Needed to create releases
+  contents: write
 
 jobs:
   build-windows:
     name: Build Windows (Cross-compile from Linux)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repository
@@ -29,7 +29,13 @@ jobs:
             clang-20 lld-20 ninja-build cmake \
             python3 python3-pip \
             cabextract \
-            wget curl unzip
+            wget curl unzip \
+            libgtk-3-dev libx11-xcb-dev libxcb1-dev libxcb-xkb-dev libxcb-randr0-dev \
+            libxcb-keysyms1-dev libxcb-icccm4-dev libxcb-xfixes0-dev libxcb-shape0-dev \
+            libxss-dev libxrandr-dev libxcursor-dev libxi-dev libxinerama-dev libxtst-dev \
+            libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libdrm-dev \
+            libgbm-dev libudev-dev libdbus-1-dev libpipewire-0.3-dev libasound2-dev \
+            libpulse-dev libvulkan-dev
 
       - name: Install xwin (for MSVC headers/libs)
         run: |
@@ -46,10 +52,16 @@ jobs:
           ln -sf objbase.h sdk/include/um/ObjBase.h
           ln -sf sdkddkver.h sdk/include/shared/SDKDDKVer.h
 
-      - name: Build ReXGlue SDK for Windows
+      - name: Build ReXGlue SDK for Linux (HOST - needed for codegen)
         run: |
-          git clone --recursive -b development https://github.com/rexglue/rexglue-sdk.git ${{ runner.temp }}/rexglue-sdk
-          cd ${{ runner.temp }}/rexglue-sdk
+          git clone --recursive -b development https://github.com/rexglue/rexglue-sdk.git ${{ runner.temp }}/rexglue-sdk-host
+          cd ${{ runner.temp }}/rexglue-sdk-host
+          cmake --preset linux-amd64 -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20
+          cmake --build out/build/linux-amd64 --config Release --target install
+
+      - name: Build ReXGlue SDK for Windows (TARGET)
+        run: |
+          cd ${{ runner.temp }}/rexglue-sdk-host
           cmake -S . -B out/build/win-amd64-cross -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/packaging/windows/clang-msvc-cross.cmake \
@@ -58,7 +70,8 @@ jobs:
             -DREXGLUE_USE_VULKAN=ON \
             -DREXGLUE_USE_D3D12=ON \
             -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/rexsdk-install-win \
-            -DXWIN_DIR=${{ runner.temp }}/msvc-sdk
+            -DXWIN_DIR=${{ runner.temp }}/msvc-sdk \
+            -DREXGLUE_HOST_TOOL=${{ runner.temp }}/rexglue-sdk-host/out/build/linux-amd64/rexglue
           cmake --build out/build/win-amd64-cross --config Release
           cmake --install out/build/win-amd64-cross --config Release
 
@@ -74,7 +87,8 @@ jobs:
             -DCMAKE_C_COMPILER=clang-20 \
             -DCMAKE_CXX_COMPILER=clang++-20 \
             -DREXSDK_DIR=${{ runner.temp }}/rexsdk-install-win \
-            -DXWIN_DIR=${{ runner.temp }}/msvc-sdk
+            -DXWIN_DIR=${{ runner.temp }}/msvc-sdk \
+            -DREXGLUE_HOST_TOOL=${{ runner.temp }}/rexglue-sdk-host/out/build/linux-amd64/rexglue
 
       - name: Build thebigs2 (first pass - generates codegen)
         run: |
@@ -88,25 +102,20 @@ jobs:
         run: |
           mkdir -p ${{ runner.temp }}/vcrt
           cd ${{ runner.temp }}/vcrt
-          # Download latest VC++ Redist
           wget -q "https://aka.ms/vs/17/release/vc_redist.x64.exe" -O vc_redist.exe
           7z x vc_redist.exe -y
-          # Find the actual DLLs in the extracted cab files
           for cab in *.cab; do 7z x "$cab" -y 2>/dev/null || true; done
 
       - name: Collect build artifacts
         run: |
           mkdir -p ${{ runner.temp }}/release
-          # Main executable and DLLs
           cp out/build/win-amd64-cross/thebigs2.exe ${{ runner.temp }}/release/
           cp ${{ runner.temp }}/rexsdk-install-win/bin/rexruntime.dll ${{ runner.temp }}/release/
           cp ${{ runner.temp }}/rexsdk-install-win/bin/rexgpu-xenos.dll ${{ runner.temp }}/release/
-          # VC++ runtime DLLs
           cp ${{ runner.temp }}/vcrt/msvcp140.dll ${{ runner.temp }}/release/ 2>/dev/null || true
           cp ${{ runner.temp }}/vcrt/msvcp140_atomic_wait.dll ${{ runner.temp }}/release/ 2>/dev/null || true
           cp ${{ runner.temp }}/vcrt/vcruntime140.dll ${{ runner.temp }}/release/ 2>/dev/null || true
           cp ${{ runner.temp }}/vcrt/vcruntime140_1.dll ${{ runner.temp }}/release/ 2>/dev/null || true
-          # Find any missing DLLs
           for dll in msvcp140.dll msvcp140_atomic_wait.dll vcruntime140.dll vcruntime140_1.dll; do
             if [ ! -f "${{ runner.temp }}/release/$dll" ]; then
               find ${{ runner.temp }}/vcrt -name "$dll" -exec cp {} ${{ runner.temp }}/release/ \; 2>/dev/null || true
