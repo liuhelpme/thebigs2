@@ -54,14 +54,14 @@ jobs:
 
       - name: Build ReXGlue SDK for Linux (HOST - needed for codegen)
         run: |
-          git clone --recursive -b development https://github.com/rexglue/rexglue-sdk.git ${{ runner.temp }}/rexglue-sdk-host
-          cd ${{ runner.temp }}/rexglue-sdk-host
+          git clone --recursive -b development https://github.com/rexglue/rexglue-sdk.git ${{ runner.temp }}/rexglue-sdk
+          cd ${{ runner.temp }}/rexglue-sdk
           cmake --preset linux-amd64 -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20
-          cmake --build out/build/linux-amd64 --config Release --target install
+          cmake --build out/build/linux-amd64 --config Release
 
-      - name: Build ReXGlue SDK for Windows (TARGET)
+      - name: Build ReXGlue SDK for Windows (TARGET) - using source tree directly
         run: |
-          cd ${{ runner.temp }}/rexglue-sdk-host
+          cd ${{ runner.temp }}/rexglue-sdk
           cmake -S . -B out/build/win-amd64-cross -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/packaging/windows/clang-msvc-cross.cmake \
@@ -71,7 +71,7 @@ jobs:
             -DREXGLUE_USE_D3D12=ON \
             -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/rexsdk-install-win \
             -DXWIN_DIR=${{ runner.temp }}/msvc-sdk \
-            -DREXGLUE_HOST_TOOL=${{ runner.temp }}/rexglue-sdk-host/out/build/linux-amd64/rexglue
+            -DREXGLUE_HOST_TOOL=${{ runner.temp }}/rexglue-sdk/out/build/linux-amd64/rexglue
           cmake --build out/build/win-amd64-cross --config Release
           cmake --install out/build/win-amd64-cross --config Release
 
@@ -79,16 +79,16 @@ jobs:
         run: |
           rm -f ~/.cmake/packages/rexglue/$(echo -n ${{ runner.temp }}/rexsdk-install-win | md5sum | cut -c1-32)
 
-      - name: Configure thebigs2 for Windows
+      - name: Configure thebigs2 for Windows (use SDK source tree directly)
         run: |
           cmake -S . -B out/build/win-amd64-cross -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/packaging/windows/clang-msvc-cross.cmake \
             -DCMAKE_C_COMPILER=clang-20 \
             -DCMAKE_CXX_COMPILER=clang++-20 \
-            -DREXSDK_DIR=${{ runner.temp }}/rexsdk-install-win \
+            -DREXSDK_DIR=${{ runner.temp }}/rexglue-sdk \
             -DXWIN_DIR=${{ runner.temp }}/msvc-sdk \
-            -DREXGLUE_HOST_TOOL=${{ runner.temp }}/rexglue-sdk-host/out/build/linux-amd64/rexglue
+            -DREXGLUE_HOST_TOOL=${{ runner.temp }}/rexglue-sdk/out/build/linux-amd64/rexglue
 
       - name: Build thebigs2 (first pass - generates codegen)
         run: |
@@ -110,8 +110,8 @@ jobs:
         run: |
           mkdir -p ${{ runner.temp }}/release
           cp out/build/win-amd64-cross/thebigs2.exe ${{ runner.temp }}/release/
-          cp ${{ runner.temp }}/rexsdk-install-win/bin/rexruntime.dll ${{ runner.temp }}/release/
-          cp ${{ runner.temp }}/rexsdk-install-win/bin/rexgpu-xenos.dll ${{ runner.temp }}/release/
+          cp ${{ runner.temp }}/rexglue-sdk/out/build/win-amd64-cross/rexruntime.dll ${{ runner.temp }}/release/
+          cp ${{ runner.temp }}/rexglue-sdk/out/build/win-amd64-cross/rexgpu-xenos.dll ${{ runner.temp }}/release/
           cp ${{ runner.temp }}/vcrt/msvcp140.dll ${{ runner.temp }}/release/ 2>/dev/null || true
           cp ${{ runner.temp }}/vcrt/msvcp140_atomic_wait.dll ${{ runner.temp }}/release/ 2>/dev/null || true
           cp ${{ runner.temp }}/vcrt/vcruntime140.dll ${{ runner.temp }}/release/ 2>/dev/null || true
