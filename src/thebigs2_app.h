@@ -27,6 +27,7 @@
 
 #include "first_launch.h"
 #include "frame_stats.h"
+#include "gpu_settings_overlay.h"
 #include "settings.h"
 #if defined(TB2_RENDER_TRACE)
 #include "render_trace.h"
@@ -131,6 +132,11 @@ class Thebigs2App : public rex::ReXApp {
       app_context().CallInUIThreadDeferred(std::move(fn));
     });
 
+    // Initialize GPU Settings Overlay (F2 to toggle)
+    tb2::InitializeGpuSettingsOverlay([this](tb2::GpuProfile profile) {
+      tb2::SetGpuProfile(profile);
+    });
+
     quit_poller_ = std::thread([this] {
       using namespace std::chrono;
       constexpr uint16_t kCombo =
@@ -161,6 +167,16 @@ class Thebigs2App : public rex::ReXApp {
         std::this_thread::sleep_for(milliseconds(50));
       }
     });
+  }
+
+  // Register GPU Settings Dialog (F2) for ImGui drawer
+  void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override {
+    auto dialog = tb2::CreateGpuSettingsDialog(drawer);
+    if (dialog) {
+      // The drawer will manage and draw this dialog each frame
+      // We keep it open/closed via the global toggle
+      // Note: The dialog itself handles visibility internally
+    }
   }
 
   void OnShutdown() override {
