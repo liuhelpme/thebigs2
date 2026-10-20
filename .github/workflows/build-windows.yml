@@ -138,8 +138,8 @@ jobs:
         if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/amd-radv-optimization'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "nightly-${{ github.sha::8 }}"
-          name: "Nightly Build ${{ github.sha::8 }}"
+          tag_name: "nightly-${{ github.run_number }}-${{ github.sha }}"
+          name: "Nightly Build ${{ github.run_number }}"
           body: |
             Automated nightly build from commit ${{ github.sha }}
             
