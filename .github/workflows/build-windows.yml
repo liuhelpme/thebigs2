@@ -1,0 +1,156 @@
+name: Build Windows Release
+
+on:
+  push:
+    branches: [master, amd-radv-optimization]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:  # Manual trigger from Actions tab
+
+permissions:
+  contents: write  # Needed to create releases
+
+jobs:
+  build-windows:
+    name: Build Windows (Cross-compile from Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang-20 lld-20 ninja-build cmake \
+            python3 python3-pip \
+            cabextract \
+            wget curl unzip
+
+      - name: Install xwin (for MSVC headers/libs)
+        run: |
+          cargo install xwin --locked || true
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Download MSVC SDK with xwin
+        run: |
+          xwin --accept-license --arch x86_64 splat --output ${{ runner.temp }}/msvc-sdk
+
+      - name: Fix header case sensitivity for xwin
+        run: |
+          cd ${{ runner.temp }}/msvc-sdk
+          ln -sf objbase.h sdk/include/um/ObjBase.h
+          ln -sf sdkddkver.h sdk/include/shared/SDKDDKVer.h
+
+      - name: Build ReXGlue SDK for Windows
+        run: |
+          git clone --recursive -b development https://github.com/rexglue/rexglue-sdk.git ${{ runner.temp }}/rexglue-sdk
+          cd ${{ runner.temp }}/rexglue-sdk
+          cmake -S . -B out/build/win-amd64-cross -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/packaging/windows/clang-msvc-cross.cmake \
+            -DCMAKE_C_COMPILER=clang-20 \
+            -DCMAKE_CXX_COMPILER=clang++-20 \
+            -DREXGLUE_USE_VULKAN=ON \
+            -DREXGLUE_USE_D3D12=ON \
+            -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/rexsdk-install-win \
+            -DXWIN_DIR=${{ runner.temp }}/msvc-sdk
+          cmake --build out/build/win-amd64-cross --config Release
+          cmake --install out/build/win-amd64-cross --config Release
+
+      - name: Remove Windows SDK from CMake package registry
+        run: |
+          rm -f ~/.cmake/packages/rexglue/$(echo -n ${{ runner.temp }}/rexsdk-install-win | md5sum | cut -c1-32)
+
+      - name: Configure thebigs2 for Windows
+        run: |
+          cmake -S . -B out/build/win-amd64-cross -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/packaging/windows/clang-msvc-cross.cmake \
+            -DCMAKE_C_COMPILER=clang-20 \
+            -DCMAKE_CXX_COMPILER=clang++-20 \
+            -DREXSDK_DIR=${{ runner.temp }}/rexsdk-install-win \
+            -DXWIN_DIR=${{ runner.temp }}/msvc-sdk
+
+      - name: Build thebigs2 (first pass - generates codegen)
+        run: |
+          cmake --build out/build/win-amd64-cross --config Release || true
+
+      - name: Build thebigs2 (second pass - compiles generated code)
+        run: |
+          cmake --build out/build/win-amd64-cross --config Release
+
+      - name: Extract VC++ runtime DLLs
+        run: |
+          mkdir -p ${{ runner.temp }}/vcrt
+          cd ${{ runner.temp }}/vcrt
+          # Download latest VC++ Redist
+          wget -q "https://aka.ms/vs/17/release/vc_redist.x64.exe" -O vc_redist.exe
+          7z x vc_redist.exe -y
+          # Find the actual DLLs in the extracted cab files
+          for cab in *.cab; do 7z x "$cab" -y 2>/dev/null || true; done
+
+      - name: Collect build artifacts
+        run: |
+          mkdir -p ${{ runner.temp }}/release
+          # Main executable and DLLs
+          cp out/build/win-amd64-cross/thebigs2.exe ${{ runner.temp }}/release/
+          cp ${{ runner.temp }}/rexsdk-install-win/bin/rexruntime.dll ${{ runner.temp }}/release/
+          cp ${{ runner.temp }}/rexsdk-install-win/bin/rexgpu-xenos.dll ${{ runner.temp }}/release/
+          # VC++ runtime DLLs
+          cp ${{ runner.temp }}/vcrt/msvcp140.dll ${{ runner.temp }}/release/ 2>/dev/null || true
+          cp ${{ runner.temp }}/vcrt/msvcp140_atomic_wait.dll ${{ runner.temp }}/release/ 2>/dev/null || true
+          cp ${{ runner.temp }}/vcrt/vcruntime140.dll ${{ runner.temp }}/release/ 2>/dev/null || true
+          cp ${{ runner.temp }}/vcrt/vcruntime140_1.dll ${{ runner.temp }}/release/ 2>/dev/null || true
+          # Find any missing DLLs
+          for dll in msvcp140.dll msvcp140_atomic_wait.dll vcruntime140.dll vcruntime140_1.dll; do
+            if [ ! -f "${{ runner.temp }}/release/$dll" ]; then
+              find ${{ runner.temp }}/vcrt -name "$dll" -exec cp {} ${{ runner.temp }}/release/ \; 2>/dev/null || true
+            fi
+          done
+
+      - name: Create release zip
+        run: |
+          cd ${{ runner.temp }}/release
+          zip -r ${{ runner.temp }}/TheBigs2-windows-x64.zip .
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TheBigs2-windows-x64
+          path: ${{ runner.temp }}/TheBigs2-windows-x64.zip
+          retention-days: 30
+
+      - name: Create GitHub Release (on tag push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ runner.temp }}/TheBigs2-windows-x64.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Pre-release (on master/feature branch push)
+        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/amd-radv-optimization'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "nightly-${{ github.sha::8 }}"
+          name: "Nightly Build ${{ github.sha::8 }}"
+          body: |
+            Automated nightly build from commit ${{ github.sha }}
+            
+            **Changes in this build:**
+            - In-game Settings Overlay (F2) with all cvars
+            - AMD/RADV optimization profile
+            - Comprehensive settings menu
+            
+            **Download:** `TheBigs2-windows-x64.zip` below
+          files: ${{ runner.temp }}/TheBigs2-windows-x64.zip
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
