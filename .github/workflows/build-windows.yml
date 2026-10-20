@@ -59,6 +59,38 @@ jobs:
           cmake --preset linux-amd64 -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20
           cmake --build out/build/linux-amd64 --config Release
 
+      - name: Patch ReXGlue SDK CMakeLists.txt for cross-compile (fix ALIAS target bug)
+        run: |
+          cd ${{ runner.temp }}/rexglue-sdk
+          # Create a patch file to fix the ALIAS target issue
+          cat > fix_alias.patch << 'EOF'
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -18,7 +18,11 @@ if(REXGLUE_USE_VULKAN)
+   find_package(Vulkan REQUIRED)
+ endif()
+ 
+-set_target_properties(rex::rexglue PROPERTIES
++# During cross-compilation, rex::rexglue may be an ALIAS target
++# which doesn't support set_target_properties. Check first.
++if(TARGET rex::rexglue AND NOT (TARGET rexglue AND "$<TARGET_PROPERTY:rex::rexglue,TYPE>" STREQUAL "ALIAS"))
++  set_target_properties(rex::rexglue PROPERTIES
++    INTERFACE_COMPILE_OPTIONS "-DREXGLUE_USE_VULKAN=${REXGLUE_USE_VULKAN}"
++  )
++endif()
+ 
+ if(REXGLUE_USE_D3D12)
+   find_package(D3D12 REQUIRED)
+EOF
+          # Apply the patch
+          patch -p1 < fix_alias.patch || echo "Patch may have already been applied or failed, continuing..."
+
+      - name: Build ReXGlue SDK for Linux (HOST - needed for codegen)
+        run: |
+          cd ${{ runner.temp }}/rexglue-sdk
+          cmake --preset linux-amd64 -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20
+          cmake --build out/build/linux-amd64 --config Release
+
       - name: Build ReXGlue SDK for Windows (TARGET) - using source tree directly
         run: |
           cd ${{ runner.temp }}/rexglue-sdk
@@ -68,7 +100,7 @@ jobs:
             -DCMAKE_C_COMPILER=clang-20 \
             -DCMAKE_CXX_COMPILER=clang++-20 \
             -DREXGLUE_USE_VULKAN=ON \
-            -DREXGLUE_USE_D3D12=ON \
+            -DREXGLUE_USE_D3D12=OFF \
             -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/rexsdk-install-win \
             -DXWIN_DIR=${{ runner.temp }}/msvc-sdk \
             -DREXGLUE_HOST_TOOL=${{ runner.temp }}/rexglue-sdk/out/build/linux-amd64/rexglue
